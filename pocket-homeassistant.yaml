@@ -283,6 +283,7 @@ display:
       it.print(16, 200, id(f22), Color(0x75, 0x75, 0x75), "BOOT: backlight on/off");
 
       // ── 触摸调试区：点屏幕任意位置，这里显示原始坐标和映射后坐标 ──
+      // taps 计数：每成功触发一次"按下"就 +1，用来确认可以反复点击
       auto t = id(ts).get_touch();
       if (t.has_value()) {
         it.filled_circle(t->x, t->y, 8, Color(0xFF, 0x52, 0x52));
@@ -291,6 +292,7 @@ display:
       } else {
         it.print(16, 240, id(f22), Color(0x75, 0x75, 0x75), "tap screen to test");
       }
+      it.printf(300, 240, id(f22), Color(0x90, 0xCA, 0xF9), "taps %u", (unsigned) id(tap_count));
 
 # ── 触摸：ST77922 内置 TDDI 触摸（本仓库自定义组件 components/st77922_touch）──
 external_components:
@@ -300,21 +302,33 @@ external_components:
     components: [st77922_touch]
 
 # 这颗芯片是触显一体：显示和触摸在同一颗 die，触摸走独立 I2C 地址 0x55。
-# ⚠️ 实测（2026-11-07，9.jpg）：HA 侧 2026.10.2 运行时 transform 的 swap_xy 未生效
-# （raw 294,78 → map 440,51，精确等于未交换轴的公式 raw_x×1.5 / raw_y×0.667），
-# 而这个映射恰好与横装方向一致（触摸芯片 x 轴沿屏幕横向、y 轴沿纵向）。
-# 所以保持 false。若日后升级后方向异常，按 docs/触摸-ST77922.md 的校准表调。
+# 坐标标定（实测 2026-11-07）：点屏幕正中 → raw 248,142，即原始坐标系本身就是
+# 480x320 横屏（列 0~479 / 行 0~319），与屏幕显示方向一致，所以不做轴交换，
+# 只用 calibration 把原始范围标成 480x320，使映射为 1:1。
+# 若日后发现"点哪里、红点不在手指下"，按 docs/触摸-ST77922.md 的校准表调 mirror_x / mirror_y。
+globals:
+  - id: tap_count
+    type: unsigned
+    restore_value: no
+    initial_value: "0"
+
 touchscreen:
   - platform: st77922_touch
     id: ts
     display: lcd
     reset_pin: GPIO48
     update_interval: 50ms
+    calibration:
+      x_min: 0
+      x_max: 480
+      y_min: 0
+      y_max: 320
     transform:
       swap_xy: false
       mirror_x: false
       mirror_y: false
     on_touch:
       - lambda: |-
-          ESP_LOGD("touch", "screen=(%d,%d) raw=(%d,%d) z=%d", touch.x, touch.y, touch.x_raw, touch.y_raw,
-                   touch.z_raw);
+          id(tap_count) += 1;
+          ESP_LOGI("touch", "#%u screen=(%d,%d) raw=(%d,%d) z=%d", (unsigned) id(tap_count), touch.x,
+                   touch.y, touch.x_raw, touch.y_raw, touch.z_raw);

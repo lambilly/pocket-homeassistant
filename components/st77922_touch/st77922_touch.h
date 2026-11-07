@@ -23,6 +23,8 @@ class ST77922Touchscreen : public Touchscreen, public i2c::I2CDevice {
   GPIOPin *reset_pin_{nullptr};
   InternalGPIOPin *interrupt_pin_{nullptr};
 
+  // 控制器支持的最大触点数（上电从 0x0009 读出），决定每次要读多少字节把 FIFO 排空
+  uint8_t max_points_{1};
   // 连续读失败计数，用于避免日志刷屏
   uint16_t read_fail_count_{0};
 };
