@@ -1,28 +1,21 @@
-# 发布包与二进制产物（用 git tag 代替）
+# 二进制与发布包
 *.zip
-# 例外：IP5406 送板 Gerber 是可直接上传嘉立创的交付物，必须入库
-!IP5406/KiCad/*_Gerber_JLC.zip
 
 # 工具与缓存
 .workbuddy/
 .esphome/
+test/.esphome/
+__pycache__/
 
-# 对话全文（含内网地址与设备细节，不入库）
+# 密钥（本地保留，不入库）
+secrets.yaml
+
+# 对话记录全文（含内网地址与设备细节）
 *对话*记录*.md
 
-# 冗余字体：配置只引用 SemiBold 与 MDI，Regular 本地留存不入库
+# 冗余字体：配置只引用 SemiBold 与 MDI
 fonts/NotoSansSC-Regular.ttf
-/NotoSansSC-Regular.ttf
-/materialdesignicons-webfont.ttf
 fonts/*.ttc
 
 # 临时文件
 *.tmp
-
-# 本地 ui/ 镜像目录（真机结构，main 采用根目录平铺；内容与根目录文件同源）
-ui/
-
-# 外壳 3D 模型：等打印件回货验证可用后再入库
-case/
-# ESPHome 构建产物
-test/.esphome/

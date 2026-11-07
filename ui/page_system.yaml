@@ -1,0 +1,567 @@
+# ==========================================================
+# 页面 3：系统
+#   行高与 page_dashboard.yaml 完全对齐：
+#     行1 y5   h50   标题栏（设备名 + 运行时长）
+#     行2 y58  h49   两个框：SSID | IP
+#     行3 y110 h153  三列：设备信息 | 系统负载 | 网络参数
+#     行4 y266 h49   TAB 导航（家居 | 网络 | 系统）
+# ==========================================================
+
+lvgl:
+  pages:
+    - id: system_page
+      width: 480
+      height: 320
+      bg_color: 0x0F0F0F
+      scrollable: false
+      scrollbar_mode: "OFF"
+      on_load:
+        - lambda: id(ui_current_page) = 3;   # 系统页
+        # 套用本页当前配色（HA 下拉选了非默认色时，开机/切页后仍能正确显示）
+        - script.execute:
+            id: ui_apply_bg
+            page: 2
+      widgets:
+        # ============ 行1：标题栏 (y5 h50) ============
+        - obj:
+            x: 5
+            y: 5
+            width: 470
+            height: 50
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              # 行1 左块整体左移 3px（10-31 二十一轮）：图标 x4→1、文字 x26→23
+              #   目的：首元素视觉左边界与第一页行1 的时间文字对齐
+              - label:
+                  align: left_mid
+                  x: 1
+                  text: "\U000F0EE0"
+                  text_font: mdi_icons_20
+                  height: 18
+                  text_color: 0x4FD8FA
+              - label:
+                  align: left_mid
+                  x: 23
+                  text: "系统状态"
+                  text_font: ui_font_medium
+                  text_color: 0xFFFFFF
+              # 运行组（图标 + 文字）整体右移 15px：图标 x277→292、文字 x299→314
+              - label:
+                  align: left_mid
+                  x: 292
+                  text: "\U000F051F"
+                  text_font: mdi_icons_20
+                  height: 18
+                  text_color: 0x59D98B
+              - label:
+                  id: sys_uptime_top_label
+                  align: left_mid
+                  x: 314
+                  text: "运行: #757575 --#"
+                  text_font: ui_font_medium
+                  text_color: 0xFFFFFF
+                  recolor: true
+              # 注：行 1 中间的「时钟 + HH:MM」已于第十七轮搬到通知页顶栏
+              #   （用户要求「把系统页那个时间移到通知页第一行中间」）。
+              #   这里不再保留任何时钟元素，本页行 1 只剩「系统状态」和「运行」。
+
+        # ============ 行2：两个框 (y58 h49) ============
+        # 470 - 3 = 467 → 宽 [233, 234]，x = 5 / 241
+        # 左框：SSID（紫）    右框：IP（蓝）
+        - obj:
+            x: 5
+            y: 58
+            width: 233
+            height: 49
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              - label:
+                  align: left_mid
+                  x: 1
+                  text: "\U000F05A9"
+                  text_font: mdi_icons_20
+                  height: 18
+                  text_color: 0x5AA9FF
+              - label:
+                  id: sys_ssid_label
+                  align: left_mid
+                  x: 24
+                  text: "SSID: #757575 --#"
+                  text_font: ui_font_medium
+                  text_color: 0xFFFFFF
+                  recolor: true
+        - obj:
+            x: 241
+            y: 58
+            width: 234
+            height: 49
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              - label:
+                  align: left_mid
+                  x: 0
+                  text: "\U000F0A5F"
+                  text_font: mdi_icons_20
+                  height: 18
+                  text_color: 0xFFD54F
+              - label:
+                  id: sys_ip_label
+                  align: left_mid
+                  x: 22
+                  text: "IP: #757575 --#"
+                  text_font: ui_font_medium
+                  text_color: 0xFFFFFF
+                  recolor: true
+
+        # ============ 行3：三列均分 (y110 h153) ============
+        # 470 - 2*3 = 464 → 464/3 = 154 余 2 → 宽 [155,155,154]
+        # x = 5 / 163 / 321；标题 y=-60，横线 y=20（紧贴标题下沿），四行 y=-32/-4/24/52
+        # ---- 左列：设备信息（绿色标题）----
+        - obj:
+            x: 5
+            y: 110
+            width: 155
+            height: 153
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: -59
+                  height: 18
+                  text: "\U000F02FD"
+                  text_font: mdi_icons
+                  text_color: 0x4FD8FA
+              - label:
+                  align: left_mid
+                  x: 25
+                  y: -60
+                  text: "设备信息"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+              - obj:
+                  x: 5
+                  y: 8
+                  width: 100
+                  height: 1
+                  bg_color: 0xFFFFFF
+                  bg_opa: 40%
+                  border_width: 1
+                  outline_width: 1
+                  radius: 0
+                  scrollable: false
+                  clickable: false
+              # 第1行：主机名
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: -32
+                  text: "\U000F048B"
+                  text_font: mdi_icons
+                  text_color: 0xFFB74D
+              - label:
+                  align: left_mid
+                  x: 25
+                  y: -32
+                  text: "主机: 监视屏"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+              # 第2行：芯片
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: -4
+                  text: "\U000F0EE0"
+                  text_font: mdi_icons
+                  text_color: 0xB39DFF
+              - label:
+                  align: left_mid
+                  x: 25
+                  y: -4
+                  text: "芯片: ESP32-S3"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+              # 第3行：屏幕
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: 24
+                  text: "\U000F0379"
+                  text_font: mdi_icons
+                  text_color: 0x59D98B
+              - label:
+                  align: left_mid
+                  x: 25
+                  y: 24
+                  text: "屏幕: 480x320"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+              # 第4行：固件
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: 52
+                  text: "\U000F059F"
+                  text_font: mdi_icons
+                  text_color: 0x5AA9FF
+              - label:
+                  align: left_mid
+                  x: 25
+                  y: 52
+                  text: "固件: ESPHome"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+
+        # ---- 中列：系统负载（白色标题）----
+        - obj:
+            x: 163
+            y: 110
+            width: 155
+            height: 153
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: -59
+                  height: 18
+                  text: "\U000F029A"
+                  text_font: mdi_icons
+                  text_color: 0x4FD8FA
+              - label:
+                  align: left_mid
+                  x: 25
+                  y: -60
+                  text: "系统负载"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+              - obj:
+                  x: 5
+                  y: 8
+                  width: 100
+                  height: 1
+                  bg_color: 0xFFFFFF
+                  bg_opa: 40%
+                  border_width: 1
+                  outline_width: 1
+                  radius: 0
+                  scrollable: false
+                  clickable: false
+              # 第1行：可用内存
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: -32
+                  text: "\U000F0EE0"
+                  text_font: mdi_icons
+                  text_color: 0xFFB74D
+              - label:
+                  id: sys_heap_label
+                  align: left_mid
+                  x: 25
+                  y: -32
+                  text: "内存: #757575 --#"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+                  recolor: true
+              # 第2行：PSRAM
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: -4
+                  text: "\U000F035B"
+                  text_font: mdi_icons
+                  text_color: 0xB39DFF
+              - label:
+                  id: sys_psram_label
+                  align: left_mid
+                  x: 25
+                  y: -4
+                  text: "外存: #757575 --#"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+                  recolor: true
+              # 第3行：主循环耗时
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: 24
+                  text: "\U000F051F"
+                  text_font: mdi_icons
+                  text_color: 0x59D98B
+              - label:
+                  id: sys_loop_label
+                  align: left_mid
+                  x: 25
+                  y: 24
+                  text: "循环: #757575 --#"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+                  recolor: true
+              # 第4行：屏幕亮度（light.ha_monitor_display_screen_light 的 brightness 属性）
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: 52
+                  text: "\U000F00E0"
+                  text_font: mdi_icons
+                  text_color: 0x5AA9FF
+              - label:
+                  id: sys_brightness_label
+                  align: left_mid
+                  x: 25
+                  y: 52
+                  text: "亮度: #757575 --#"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+                  recolor: true
+
+        # ---- 右列：网络参数（白色标题）----
+        - obj:
+            x: 321
+            y: 110
+            width: 154
+            height: 153
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: -59
+                  height: 18
+                  text: "\U000F062E"
+                  text_font: mdi_icons
+                  text_color: 0x4FD8FA
+              - label:
+                  align: left_mid
+                  x: 25
+                  y: -60
+                  text: "网络参数"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+              - obj:
+                  x: 5
+                  y: 8
+                  width: 100
+                  height: 1
+                  bg_color: 0xFFFFFF
+                  bg_opa: 40%
+                  border_width: 1
+                  outline_width: 1
+                  radius: 0
+                  scrollable: false
+                  clickable: false
+              # 第2行：信号强度
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: -4
+                  text: "\U000F05A9"
+                  text_font: mdi_icons
+                  text_color: 0xB39DFF
+              - label:
+                  id: sys_rssi_label
+                  align: left_mid
+                  x: 25
+                  y: -4
+                  text: "RSSI: #757575 --#"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+                  recolor: true
+              # 第4行：WiFi 连接
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: 52
+                  text: "\U000F059F"
+                  text_font: mdi_icons
+                  text_color: 0x5AA9FF
+              - label:
+                  id: sys_gw3_label
+                  align: left_mid
+                  x: 25
+                  y: 52
+                  text: "WiFi: #757575 --#"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+                  recolor: true
+              # 第3行：外网（MQTT 通道状态）
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: 24
+                  text: "\U000F0FA8"
+                  text_font: mdi_icons
+                  text_color: 0x59D98B
+              - label:
+                  id: sys_wait_label
+                  align: left_mid
+                  x: 25
+                  y: 24
+                  text: "MQTT: #757575 --#"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+                  recolor: true
+              # 第1行：信号质量（使用 signal 图标，比 DNS 更贴合语义）
+              - label:
+                  align: left_mid
+                  x: 6
+                  y: -32
+                  text: "\U000F04C5"
+                  text_font: mdi_icons
+                  text_color: 0xFFB74D
+              - label:
+                  id: sys_quality_label
+                  align: left_mid
+                  x: 25
+                  y: -32
+                  text: "SIGQ: #757575 --#"
+                  text_font: ui_font_small
+                  text_color: 0xFFFFFF
+                  recolor: true
+
+        # ============ 底部四键 TAB（四页共用，见 ui/tab_bar.yaml） ============
+        - !include tab_bar.yaml
+
+# ==========================================================
+# 本页数据刷新（系统页可见时 ui_current_page == 3）
+# ==========================================================
+interval:
+  - interval: 2s
+    then:
+      - lambda: |-
+          if (!id(lvgl_ready)) return;
+          if (id(ui_screen_off)) return;      // 熄屏时不再刷控件，省 CPU/SPI
+          if (id(ui_current_page) != 3) return;
+
+          char buf[48];
+
+          // ===== 行1：运行时长 =====
+          {
+            int mins = (int) (id(uptime_sensor).state / 60.0f);
+            if (mins >= 1440) snprintf(buf, sizeof(buf), "运行: %d天%d小时", mins / 1440, (mins % 1440) / 60);
+            else if (mins >= 60) snprintf(buf, sizeof(buf), "运行: %d小时%d分", mins / 60, mins % 60);
+            else snprintf(buf, sizeof(buf), "运行: %d分钟", mins);
+            lv_label_set_text(id(sys_uptime_top_label), buf);
+            lv_obj_set_style_text_color(id(sys_uptime_top_label), lv_color_hex(0xFFFFFF), 0);
+          }
+
+          // ===== 行2：IP / SSID  =====
+          {
+            const std::string &ssid = id(wifi_ssid_sensor).state;
+            snprintf(buf, sizeof(buf), "SSID: %s", ssid.empty() ? "#757575 --#" : ssid.c_str());
+            lv_label_set_text(id(sys_ssid_label), buf);
+            // 名称恒白；无数据仅 "--" 内联灰
+            lv_obj_set_style_text_color(id(sys_ssid_label), lv_color_hex(0xFFFFFF), 0);
+          }
+          {
+            const std::string &ip = id(wifi_ip_address).state;
+            snprintf(buf, sizeof(buf), "IP: %s", ip.empty() ? "#757575 --#" : ip.c_str());
+            lv_label_set_text(id(sys_ip_label), buf);
+            lv_obj_set_style_text_color(id(sys_ip_label), lv_color_hex(0xFFFFFF), 0);
+          }
+          // ===== 行3 中列：系统负载 =====
+          // 内存/PSRAM 都取自 debug 组件（free_heap_sensor 是 debug.free 的 id）
+          {
+            float heap = id(free_heap_sensor).state;
+            if (std::isfinite(heap) && heap > 0) snprintf(buf, sizeof(buf), "内存: %uK", (unsigned) (heap / 1024.0f));
+            else snprintf(buf, sizeof(buf), "内存: #757575 --#");
+            lv_label_set_text(id(sys_heap_label), buf);
+            lv_obj_set_style_text_color(id(sys_heap_label), lv_color_hex(0xFFFFFF), 0);
+          }
+
+          {
+            // PSRAM 剩余量（本板为 octal PSRAM，取 SPIRAM 容量池）
+            size_t ps = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+            if (ps > 0) snprintf(buf, sizeof(buf), "外存: %uK", (unsigned) (ps / 1024));
+            else snprintf(buf, sizeof(buf), "外存: #757575 --#");
+            lv_label_set_text(id(sys_psram_label), buf);
+            lv_obj_set_style_text_color(id(sys_psram_label), lv_color_hex(0xFFFFFF), 0);
+          }
+          {
+            float ms = id(loop_time_sensor).state;
+            if (std::isfinite(ms)) snprintf(buf, sizeof(buf), "循环: %.0fms", ms);
+            else snprintf(buf, sizeof(buf), "循环: #757575 --#");
+            lv_label_set_text(id(sys_loop_label), buf);
+            lv_obj_set_style_text_color(id(sys_loop_label), lv_color_hex(0xFFFFFF), 0);
+          }
+          {
+            // 屏幕亮度：直接读本机灯实体（number 滑块与 HA 调节都落在这里，实时准确）。
+            // 不再走 HA 推送的 screen_bright 字段——那条路有 5s 推送周期的显示延迟。
+            //   HA 的 brightness 取值 0~1，换算成百分比显示
+            float br = id(lcd_backlight).remote_values.get_brightness();
+            int pct = (int) (br * 100.0f + 0.5f);
+            if (pct < 0) pct = 0;
+            if (pct > 100) pct = 100;
+            snprintf(buf, sizeof(buf), "亮度: %d%%", pct);
+            lv_label_set_text(id(sys_brightness_label), buf);
+            lv_obj_set_style_text_color(id(sys_brightness_label), lv_color_hex(0xFFFFFF), 0);
+          }
+          // ===== 行3 右列：网络参数（SIGQ / RSSI / MQTT / WiFi）=====
+          if (std::isfinite(id(wifi_rssi).state)) {
+            snprintf(buf, sizeof(buf), "RSSI: %ddB", (int) id(wifi_rssi).state);
+            lv_label_set_text(id(sys_rssi_label), buf);
+            lv_obj_set_style_text_color(id(sys_rssi_label), lv_color_hex(0xFFFFFF), 0);
+          } else {
+            lv_label_set_text(id(sys_rssi_label), "RSSI: #757575 --#");
+            lv_obj_set_style_text_color(id(sys_rssi_label), lv_color_hex(0xFFFFFF), 0);
+          }
+
+          {
+            // 网关：本机已连上 WiFi 且拿到 IP 即视为网关可达（界面上的网关行用 sys_gw3_label）
+            // 只有“断开”两个字变色（灰），"WiFi: " 前缀恒用本行蓝色
+            const std::string &ip = id(wifi_ip_address).state;
+            lv_label_set_text(id(sys_gw3_label),
+                              ip.empty() ? "WiFi: #757575 断开#" : "WiFi: 已连接");
+            lv_obj_set_style_text_color(id(sys_gw3_label), lv_color_hex(0xFFFFFF), 0);
+          }
+          {
+            // 外网通道状态（MQTT 是否连上，代表脱离家里 WiFi 时能否取数）
+            // 只有“连通/断开”变色：连通绿、断开红；"MQTT: " 前缀恒用本行绿色
+            const bool mq = mqtt::global_mqtt_client != nullptr && mqtt::global_mqtt_client->is_connected();
+            lv_label_set_text(id(sys_wait_label),
+                              mq ? "MQTT: #59D98B 连通#" : "MQTT: #FF5252 断开#");
+            lv_obj_set_style_text_color(id(sys_wait_label), lv_color_hex(0xFFFFFF), 0);
+          }
+          // 信号质量（右列第1行）：只有“优秀/良好/微弱”三档两个字变色
+          //   优秀绿 / 良好黄 / 微弱红 / 无数据灰；"SIGQ: " 前缀恒用本行橙色
+          {
+            float rssi = id(wifi_rssi).state;
+            if (std::isfinite(rssi)) {
+              const char* q = rssi > -55 ? "SIGQ: #59D98B 优秀#"
+                            : (rssi > -70 ? "SIGQ: #FFD54F 良好#" : "SIGQ: #FF5252 微弱#");
+              lv_label_set_text(id(sys_quality_label), q);
+            } else {
+              lv_label_set_text(id(sys_quality_label), "SIGQ: #757575 --#");
+            }
+            lv_obj_set_style_text_color(id(sys_quality_label), lv_color_hex(0xFFFFFF), 0);
+          }
+
+  # ----------------------------------------------------------
+  # 当前时间：第十七轮搬到通知页顶栏（page_notify.yaml 的 notify_clock），
+  #   本页不再刷新时钟，原来的 1s interval 一并删除。
+  # ----------------------------------------------------------

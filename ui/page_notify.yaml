@@ -1,0 +1,458 @@
+# ==========================================================
+# 页面 4：通知（v2.0 NOTIFY）—— 单条全屏 + 上下切换
+# ----------------------------------------------------------
+# 入口：底部四键 TAB 的「通知」（四页共用同一套 TAB）
+# 数据：MQTT home/ha-monitor-display/notify
+#       → ns_notify 8 槽环形缓冲（include/notify_store.h，单条正文上限 3.5KB）
+# 版式（480x320）—— 卡片纵向节奏 5/30 · 4 · 187 · 4 · 32 · 4 · 49
+#   y5   h30  顶栏：MDI 响铃图标（黄 FFD54F，页面固定）+ 纯文字标题｜中间时钟 HH:MM
+#              （第十七轮从系统页搬来，图标黄 + 时间白）｜右侧相对时间（12px 白）
+#   y39  h187 正文：仅纵向滚动容器，内嵌 440px 宽 label（12px 白，上20/左20，折行入库时切好）
+#   y230 h32  切换条：四个独立按钮（宽 100），列间 10px
+#   y266 h49  四键 TAB
+# 交互：上一条 = 往更旧翻（view+1），下一条 = 往更新翻（view-1）
+#       删除 = 删当前这条；全部删除 = 清空 8 槽
+#       内容超一屏时自动慢速下滚（10px/s），到底停 3 秒回到顶部；手一碰就暂停 4 秒
+# 刷新：只在 ns_notify::rev 变化时重绘；进页强制刷一次
+# 字体：正文/标题/按钮/时间统一 ui_font_notify（12px，GB2312 一级 3755 字全量）
+#       TAB 用白名单 ui_font_large（不为大字表多付三份体积）
+# 折行：不依赖 LVGL 的 WRAP，改由 notify_store.h 的 wrap_hard() 在入库时
+#       按 425px 硬切行；Node-RED 侧也做了同样的折行，两头双保险。
+#       渲染时把「定宽 + 定 long_mode」放到 set_text **之前**（第七轮改），
+#       因为 set_text 之后再改宽度，文本已经按旧宽度排好了。
+# 配色：静态文字纯白；灰 757575 只留给空态；黄色 FFD54F 只留给标题图标；
+#       按钮底 333333 + 1px 边 424242（分块要看得见）；删除橙 FFB74D、全部删除红 FF5252
+# ==========================================================
+
+lvgl:
+  pages:
+    - id: notify_page
+      width: 480
+      height: 320
+      bg_color: 0x1E1E1E
+      scrollable: false
+      scrollbar_mode: "OFF"
+      on_load:
+        - lambda: |-
+            id(ui_current_page) = 4;   // 0 家居 / 2 网络 / 3 系统 / 4 通知（1 弃用）
+            ns_notify::unread = 0;     // 进页即清未读
+
+            // 正文容器只允许纵向滚动（用户反馈原来会左右滑）
+            lv_obj_set_scroll_dir(id(notify_body_obj), LV_DIR_VER);
+            // 内边距归零：滚动容器的默认内边距会让「能不能滚」影响文字左缘，
+            //   这是两种状态边距不一致的根源。归零后左缘只由 label 的 x/y 决定。
+            //   （写在这里而不是 YAML 里，是因为 lvgl 组件的 pad_* 键各版本支持不一）
+            lv_obj_set_style_pad_all(id(notify_body_obj), 0, LV_PART_MAIN);
+            // 顺序要点：先定宽与折行策略，再设文本（见 notify_render 注释）
+            lv_obj_set_width(id(notify_body), 440);
+            lv_label_set_long_mode(id(notify_body), LV_LABEL_LONG_WRAP);
+            lv_obj_scroll_to_y(id(notify_body_obj), 0, LV_ANIM_OFF);
+        - script.execute: notify_render
+        # 底色跟随家居页（page: 3 = 通知页）
+        - script.execute:
+            id: ui_apply_bg
+            page: 3
+      widgets:
+        # ============ 顶栏：消息图标 + 标题 ｜ 时间 (y5 h30) ============
+        - obj:
+            x: 5
+            y: 5
+            width: 470
+            height: 30
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              # 标题图标：mdi:bell-ring-outline（U+F009F），黄 FFD54F，20px 描边版
+              #   19 轮恢复：18 轮我误读成「连铃铛也不要」，把它删了。
+              #   用户实际要删的是 **Node-RED 随标题带过来的那个图标**
+              #   （title 里带的 emoji → MDI 标记），铃铛是页面自己的固定标识，要留。
+              #   NR 侧已不再给 title 做图标替换，设备端 set_text 前还会剥一次标记。
+              - label:
+                  id: notify_title_icon
+                  align: left_mid
+                  x: 1
+                  text: "\U000F009F"
+                  text_font: mdi_icons_20
+                  height: 18
+                  text_color: 0xFFD54F
+              - label:
+                  id: notify_title
+                  align: left_mid
+                  x: 23
+                  width: 320
+                  long_mode: DOT
+                  recolor: true
+                  text: "通知"
+                  text_font: ui_font_notify
+                  text_color: 0xFFFFFF
+              # 时间：白字、固定左起点（label 宽度随文本走，右对齐不可靠）
+              #   第九轮恢复相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前
+              #   第十轮：用户觉得「刚刚」太靠左，右移 30px（3 个汉字宽）→ x360
+              #   第十三轮：仍偏左，再右移 24px（2 个汉字宽）→ x384
+              #   最长「59 分钟前」≈ 53px，右缘 437，右侧留 38px
+              - label:
+                  id: notify_time_rel
+                  align: left_mid
+                  x: 384
+                  text: ""
+                  text_font: ui_font_notify
+                  text_color: 0xFFFFFF
+              # 当前时间（HH:MM）：从系统页行 1 搬过来，居中放顶栏
+              #   第十七轮用户要求「把系统页那个时间移到通知页第一行中间」。
+              #   图标与时间放进同一个 label（ui_font_notify 里已并入 MDI 时钟
+              #   U+F0150），align: center 一次性把「图标+时间」当成一组居中，
+              #   比两个 label 各算偏移稳（label 的墨迹偏移历来不好对）。
+              #   灰 --:-- 是 SNTP 未同步时的占位，同步后由 1s interval 刷成白。
+              - label:
+                  id: notify_clock
+                  align: center
+                  text: "#757575 \U000F0150# --:--"
+                  text_font: ui_font_notify
+                  text_color: 0xFFFFFF
+                  recolor: true
+
+        # ============ 正文：仅纵向滚动 (y39 h187) ============
+        - obj:
+            id: notify_body_obj
+            x: 5
+            y: 39
+            width: 470
+            height: 187
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              # 正文位置（第十九轮，用户定「滚动页与未滚动页一致、离边框都 20px」）：
+              #   左 x20 / 上 y20 —— 两种状态同一套数值，不再按溢出与否分叉。
+              #   卡片 1px 边框向内画，文字到边框线实际 19~20px。
+              #   宽 440：折行仍是 425（入库时切好），右缘最远 20+425 = 445，
+              #   卡片内右边界 474，右侧留 29px。
+              #   text_align LEFT：默认居中会让短行看起来偏，通知应左对齐。
+              - label:
+                  id: notify_body
+                  x: 20
+                  y: 20
+                  width: 440
+                  long_mode: WRAP
+                  text_align: LEFT
+                  recolor: true
+                  text: ""
+                  text_font: ui_font_notify
+                  text_color: 0xFFFFFF
+
+        # ============ 空态（无通知时） ============
+        - label:
+            id: notify_empty_label
+            align: center
+            x: 0
+            y: -10
+            text: "暂无通知"
+            text_font: ui_font_medium
+            text_color: 0x757575
+
+        # ============ 切换条 (y230 h32)：四个独立卡片，列间 10px ============
+        #   第八轮按用户意见改：要像家居页「在家 / 客人 / 手机 / 语音」那样
+        #   **每格一个独立的框**，而不是一个大框里塞四个。
+        #   所以撤掉外层容器，四个 obj 直接做页面顶层对象，沿用家居页那套视觉：
+        #     bg 同页面色（ui_apply_bg 会统一刷，换底色时自动跟） +
+        #     1px 描边拉出格子轮廓 + radius 10
+        #   470 内容宽：4×100 + 3×10 = 430 → x 10 / 130 / 250 / 370
+        #   第九轮每格再减 10px（中心点不动、两边各收 5）：
+        #     中心 60 / 180 / 300 / 420 与 110 宽时完全一致
+        #     左缘 10、右缘 370+100 = 470，左右各 10，严格对称
+        # ① 上一条（往更旧翻）
+        - obj:
+            id: notify_btn_prev
+            x: 10
+            y: 230
+            width: 100
+            height: 32
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              - label:
+                  align: center
+                  text: "‹ 上一条"
+                  text_font: ui_font_notify
+                  text_color: 0xFFFFFF
+            on_click:
+              - lambda: |-
+                  if (ns_notify::view < ns_notify::count - 1) ns_notify::view++;
+                  id(notify_render).execute();
+
+        # ② 下一条（往更新翻）
+        - obj:
+            id: notify_btn_next
+            x: 130
+            y: 230
+            width: 100
+            height: 32
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              - label:
+                  align: center
+                  text: "下一条 ›"
+                  text_font: ui_font_notify
+                  text_color: 0xFFFFFF
+            on_click:
+              - lambda: |-
+                  if (ns_notify::view > 0) ns_notify::view--;
+                  id(notify_render).execute();
+
+        # ③ 删除当前条：橙 FFB74D（只删一条，误触代价小）
+        - obj:
+            id: notify_btn_del
+            x: 250
+            y: 230
+            width: 100
+            height: 32
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              - label:
+                  align: center
+                  text: "删除"
+                  text_font: ui_font_notify
+                  text_color: 0xFFB74D
+            on_click:
+              - lambda: |-
+                  ns_notify::remove_at(ns_notify::view);
+                  id(notify_render).execute();
+
+        # ④ 全部删除：红 FF5252（一次清空 8 槽，放最右最不易误触）
+        - obj:
+            id: notify_btn_clear
+            x: 370
+            y: 230
+            width: 100
+            height: 32
+            bg_color: 0x1E1E1E
+            border_width: 1
+            outline_width: 0
+            radius: 10
+            scrollable: false
+            widgets:
+              - label:
+                  align: center
+                  text: "全部删除"
+                  text_font: ui_font_notify
+                  text_color: 0xFF5252
+            on_click:
+              - lambda: |-
+                  ns_notify::clear_all();
+                  id(notify_render).execute();
+
+        # ============ 底部四键 TAB（四页共用，见 ui/tab_bar.yaml） ============
+        - !include tab_bar.yaml
+
+# --- 渲染脚本（进页 / 切换 / 删除 / 有新消息时调用） ---
+script:
+  - id: notify_render
+    mode: restart
+    then:
+      - lambda: |-
+          const int n = ns_notify::count;
+
+          // 浏览位置纠偏：删到空、或条数变少时回到有效范围
+          if (ns_notify::view > n - 1) ns_notify::view = (n > 0) ? n - 1 : 0;
+          // 切换条现在是四个独立顶层卡片（没有外层容器），逐块显隐
+          lv_obj_t *btns[4] = {id(notify_btn_prev), id(notify_btn_next),
+                               id(notify_btn_del),  id(notify_btn_clear)};
+          if (n == 0) {
+            lv_obj_add_flag(id(notify_body_obj), LV_OBJ_FLAG_HIDDEN);
+            for (int i = 0; i < 4; i++) lv_obj_add_flag(btns[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(notify_empty_label), LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(id(notify_title), "通知");
+            lv_label_set_text(id(notify_time_rel), "");
+            lv_label_set_text(id(notify_body), "");
+            return;
+          }
+          lv_obj_clear_flag(id(notify_body_obj), LV_OBJ_FLAG_HIDDEN);
+          for (int i = 0; i < 4; i++) lv_obj_clear_flag(btns[i], LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(notify_empty_label), LV_OBJ_FLAG_HIDDEN);
+
+          const ns_notify::Slot &s = ns_notify::at(ns_notify::view);
+          // 标题：剥掉上游可能带来的 recolor 标记（第十九轮）
+          //   标题栏的图标固定是铃铛，上游的 emoji/占位星号不要跟它挤一起。
+          static std::string title_buf;
+          title_buf = ns_notify::strip_marks(s.title);
+          if (title_buf.empty()) title_buf = "通知";
+          lv_label_set_text(id(notify_title), title_buf.c_str());
+
+          // 正文：先把宽度与折行策略定死，再塞文本（第七轮调了顺序）
+          //   以前是 set_text 之后才 set_width + update_layout —— 但 set_text
+          //   那一刻文本就已经按旧尺寸排好了，之后改宽度通常只影响外框，
+          //   行不会重排，于是「不换行」反复出现。顺序反过来才稳：
+          //     ① set_width(440)  让 label 有明确行宽
+          //     ② set_long_mode(WRAP)
+          //     ③ set_text        此时才排版，按 440 折
+          //   兜底：入库时 wrap_hard() 已插好真换行符，即使 ①② 都不生效也照断。
+          lv_obj_set_width(id(notify_body), 440);
+          lv_label_set_long_mode(id(notify_body), LV_LABEL_LONG_WRAP);
+
+          // 第三重保险（第七轮加）：渲染时再折一次，幂等
+          //   已经折好的文本再跑一遍 wrap_hard 不会多断（每行本就 ≤420px），
+          //   但缓冲里「入库时还没折行」的老消息会被这一遍救回来——
+          //   用户不重启设备时，8 个槽里很可能还留着旧排版的内容。
+          //   复用静态缓冲，避免每次重绘都分配 3.5KB。
+          static std::string render_buf;
+          render_buf = ns_notify::wrap_hard(s.msg);
+          lv_label_set_text(id(notify_body), render_buf.c_str());
+          lv_obj_update_layout(id(notify_body));   // 立刻算出折行后的高度（滚动要用）
+
+          // --- 左缘统一（第十五轮）---
+          //   用户反馈：内容不够一屏（不滚动）和内容超一屏（滚动）两种状态下，
+          //   正文左边缘看着不一样。二者本该同源，差异只可能来自容器自身：
+          //   · pad_left 非 0 时，「能不能滚」会影响内容区宽度 → 文字起始位会飘
+          //   · 默认 scroll_dir 是 ALL，横向也能滚，手指一划整段就左右位移
+          //   所以把容器内边距归零、只留纵向滚动，左边缘就只由 label 的 x 决定。
+          lv_obj_set_style_pad_all(id(notify_body_obj), 0, LV_PART_MAIN);
+          lv_obj_set_scroll_dir(id(notify_body_obj), LV_DIR_VER);
+
+          // --- 顶部留一行：两种状态一致（第十八轮）---
+          //   用户「内容太靠上面，下移一行」：不再按是否溢出改 y，
+          //   滚动与不滚动都从 y=20 开始（20 = 3 + 一行 17px）。
+          //   溢出时滚出去的那一行正好落在顶部这行空白里。
+          const int body_h = (int) lv_obj_get_height(id(notify_body));
+          const int box_h  = (int) lv_obj_get_height(id(notify_body_obj));
+          const bool overflow = (body_h + 6 > box_h);
+          lv_obj_update_layout(id(notify_body));
+
+          // 换内容 / 切条后回到顶部（自动滚动从第一行开始）
+          lv_obj_scroll_to_y(id(notify_body_obj), 0, LV_ANIM_OFF);
+
+          // 时间：相对时间（第九轮恢复，用户指定）：刚刚 / N 分钟前 / N 小时前 / N 天前
+          //   （带年份的绝对时间用了一轮就撤——不如相对时间直观）
+          //   兜底链：
+          //     1) ts 缺失（上游没带）→ 按设备当前时间算，也就是「刚刚」；
+          //     2) 设备时钟没走（now < 2020）→ 算不出差值，也显示「刚刚」，绝不留空白。
+          //   ts 单位在主配置 on_message 里已归一成秒。
+          char tb[24] = {0};
+          const uint32_t now = static_cast<uint32_t>(::time(nullptr));
+          const uint32_t ts = (s.ts != 0) ? s.ts : now;
+          if (now > 1600000000UL && ts > 1600000000UL && now > ts) {
+            const uint32_t d = now - ts;
+            if (d < 60)          snprintf(tb, sizeof(tb), "刚刚");
+            else if (d < 3600)   snprintf(tb, sizeof(tb), "%u 分钟前", (unsigned) (d / 60));
+            else if (d < 86400)  snprintf(tb, sizeof(tb), "%u 小时前", (unsigned) (d / 3600));
+            else                 snprintf(tb, sizeof(tb), "%u 天前", (unsigned) (d / 86400));
+          } else {
+            snprintf(tb, sizeof(tb), "刚刚");
+          }
+          lv_label_set_text(id(notify_time_rel), tb);
+
+          // 阅读即已读：停在最新一条时清未读
+          if (ns_notify::view == 0) ns_notify::unread = 0;
+
+          // 渲染后测一下真实几何 —— 抓串口就能判断折行到底卡在哪一层：
+          //   w=440 h≈(行数×17)  → 正常
+          //   w=很宽 h=17        → 宽度没锁住，文本排成一行
+          //   w=440 h=17 但有换行符 → LVGL 没按 \n 断（不太可能，通常前面 h 会涨）
+          ESP_LOGI("notify", "重绘 view=%d/%d rev=%u  正文label w=%d h=%d 文本%u字节",
+                   ns_notify::view, n, (unsigned) ns_notify::rev,
+                   (int) lv_obj_get_width(id(notify_body)),
+                   (int) lv_obj_get_height(id(notify_body)),
+                   (unsigned) s.msg.size());
+          // 左缘/溢出诊断：x/y 是 label 相对正文卡片的位置，pad/scrollx 是卡片自己的，
+          //   万一「不滚动时左缘偏了」再出现，这行数字就能直接看出是谁在动。
+          ESP_LOGI("notify", "布局 x=%d y=%d pad=%d scrollx=%d 溢出=%d 卡高=%d",
+                   (int) lv_obj_get_x(id(notify_body)), (int) lv_obj_get_y(id(notify_body)),
+                   (int) lv_obj_get_style_pad_left(id(notify_body_obj), LV_PART_MAIN),
+                   (int) lv_obj_get_scroll_x(id(notify_body_obj)),
+                   (int) overflow, box_h);
+
+# --- 顶栏时钟：1 秒一次，24 小时制 HH:MM（从系统页搬来，第十七轮） ---
+#   只在本页刷；熄屏不刷（唤醒后下一秒自动补上）
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          if (!id(lvgl_ready)) return;
+          if (id(ui_screen_off)) return;
+          if (id(ui_current_page) != 4) return;
+
+          auto now = id(system_time).now();
+          if (!now.is_valid()) return;       // 未同步：保持灰 --:--
+          char tbuf[24];
+          snprintf(tbuf, sizeof(tbuf), "#FFD54F \U000F0150# %02d:%02d",
+                   now.hour, now.minute);
+          lv_label_set_text(id(notify_clock), tbuf);
+
+  # --- 内容变化时才触发重绘（1s 巡检，无新消息直接 return） ---
+  - interval: 1s
+    then:
+      - lambda: |-
+          if (!id(lvgl_ready)) return;
+          if (id(ui_screen_off)) return;
+          if (id(ui_current_page) != 4) return;
+          static uint32_t last_rev = 0;
+          if (ns_notify::rev == last_rev) return;
+          last_rev = ns_notify::rev;
+          id(notify_render).execute();
+
+  # --- 长文自动上下滚动（400ms 一步、每步 4px ≈ 10px/s） ---
+  #   只在：通知页 + 屏幕亮 + 有内容 + 内容超一屏 时才动
+  #   为什么不是 100ms/1px：每一步都要让 LVGL 重画整块正文区（470×187），
+  #   10fps 会明显吃 SPI 带宽、拖动也会发涩；400ms 一步约 2.5fps，观感一样顺。
+  #   用户刚摸过屏幕（4s 内）：暂停，避免跟手指抢
+  #   滚到底：停 3 秒，再动画回到顶部，循环
+  - interval: 400ms
+    then:
+      - lambda: |-
+          if (!id(lvgl_ready)) return;
+          if (id(ui_screen_off)) return;
+          if (id(ui_current_page) != 4) return;
+
+          lv_obj_t *box = id(notify_body_obj);
+          lv_obj_t *lb  = id(notify_body);
+          if (box == nullptr || lb == nullptr) return;
+          if (lv_obj_has_flag(box, LV_OBJ_FLAG_HIDDEN)) return;
+
+          static uint32_t seen_rev = 0;
+          static uint32_t bottom_at = 0;     // 停在底部的起始时刻
+          static uint32_t hold_until = 0;    // 顶部停留截止时刻
+
+          // 来了新通知 / 换了条目：回到顶部并先停 3 秒，让人从头读
+          if (ns_notify::rev != seen_rev) {
+            seen_rev = ns_notify::rev;
+            bottom_at = 0;
+            hold_until = millis() + 3000;
+          }
+
+          // 内容不超过一屏（上 3 / 下 3 的内边距，见正文 label 的 y）
+          if (lv_obj_get_height(lb) + 6 <= lv_obj_get_height(box)) return;
+
+          // 手指刚动过：暂停，别跟人抢
+          if (lv_disp_get_inactive_time(NULL) < 4000) {
+            bottom_at = 0;
+            return;
+          }
+          if (millis() < hold_until) return;
+
+          if (lv_obj_get_scroll_bottom(box) > 0) {
+            bottom_at = 0;
+            lv_obj_scroll_by(box, 0, -4, LV_ANIM_OFF);
+          } else if (bottom_at == 0) {
+            bottom_at = millis();
+          } else if (millis() - bottom_at > 3000) {
+            // 用 LV_ANIM_OFF 直接跳回顶部：带动画会和下一拍的 -4px 抢方向
+            lv_obj_scroll_to_y(box, 0, LV_ANIM_OFF);
+            bottom_at = 0;
+            hold_until = millis() + 2000;
+          }

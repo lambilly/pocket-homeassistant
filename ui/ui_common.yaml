@@ -1,0 +1,512 @@
+# ==========================================================
+# 公共 UI 资源：字体 / 全局变量 / 时钟刷新
+# 被主配置通过 packages 引入，勿单独删除
+# ==========================================================
+
+# ==========================================================
+# 字体定义
+# ==========================================================
+# 说明：
+#   · ESPHome 的 glyphs 不写时只嵌入英文字母数字，中文必须显式列出；
+#   · 每个 font 条目（每个 id）都会独立生成字形表、互不复用，所以每个
+#     中文字体都要写 glyphs——下面用 YAML 锚点 &cjk_glyphs 复用同一份
+#     字表，避免重复粘贴；
+#   · 字表只列页面实际会显示的中文/符号（约 121 字）+ 完整 ASCII，
+#     体积小、编译快；以后新增文案时把新字加进字表即可。
+#   · 字号约定：ui_font_small=12  ui_font_medium=16  ui_font_large=20，
+#     图标按同行文字字号配对：mdi_icons_12 / mdi_icons=16 / mdi_icons_20
+#
+#   · bpp（bits per pixel）= 每个像素用几位灰度表示抗锯齿：
+#       1 → 只有黑白两档，笔画有明显锯齿；
+#       2 → 4 档灰度（本项目原来用这个），小字号尚可，16/20px 边缘略毛糙；
+#       4 → 16 档灰度（当前值），边缘平滑，最接近 TFT 上"锐利清晰"的观感；
+#       8 → 256 档，肉眼已看不出比 4 更好，纯浪费 Flash。
+#     bpp 只影响"字形位图"这一块的体积，不影响字体文件本身、不影响逻辑。
+#     本项目实测（624 字形 × 3 档 CJK + 47 图标 × 3 档 MDI）：
+#       bpp2 合计约 138KB，bpp4 合计约 273KB，只多 135KB；
+#       16MB Flash 下占比从 0.8% → 1.7%，完全无压力 —— 所以直接用 4。
+# ==========================================================
+
+font:
+  - file: "fonts/NotoSansSC-SemiBold.ttf"
+    id: ui_font_small
+    size: 12
+    bpp: 4
+    glyphs: &cjk_glyphs
+      # 完整 ASCII 可打印字符（含空格）
+      - ' !"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
+      # ---- 中文字表（按用途分组，新增文案时把字加到对应组即可）----
+      # 注意：组与组之间不能有重复字，否则编译报 "Found duplicate glyphs"
+      - "℃³㎡·"            # 符号
+      - "年月日时分秒星期一二三四五六今昨早中晚夜零晨"   # 日期时间（22字）
+      - "晴阴云雨雪雷阵雾霾冰雹风暴寒暖热冷温湿度降"   # 天气（21字）
+      - "家人客来访工作休息睡觉吃饭出入闲"   # 人员身份（16字）
+      - "电器灯帘窗空调扇视机箱屏幕门锁摄头音手车柜夹"   # 设备电器（22字）
+      - "网线路由设备关启通断信号强弱无上站地址端口宽带流量连"   # 网络通信（26字）
+      - "开停运行离在正常异报警故障待加载获取显示"   # 运行状态（20字）
+      - "用水气压力功瓦千米升盏幅台件个"   # 能耗计量（15字）
+      - "存盘读写传速下达进余容间"   # NAS存储（12字）
+      - "系统型固版本内占率循环延钟芯片主"   # 系统信息（16字）
+      - "不于亚优位低使到制前务动参可后名处外大已式总接控散数新暂服未极查校检概模止比监等终络耗能自良览证据称请负质转输道闻高多天小居态状语轩迪逸亮回班莆田铁塔"   # 常用杂项（75字，含城市/运营商 莆田铁塔）
+      - "知"   # v2.0 通知页 TAB
+      # 房间与家具（活动轨迹 sensor.huo_dong_gui_ji 动态文本用；已剔除与原表重复的"客"）
+      - "厅卧室厨卫书房阳餐床沙椅桌梯楼廊"   # 房间家具（17字）
+      # 家电用品（同上；已剔除重复的"电/视/箱/冰/加/湿"）
+      - "壶洗微炉脑衣插播吸尘扫净化"   # 家电用品（13字）
+      # 轨迹动态词（同上；已剔除重复的"检"）
+      - "注册活像充变测有去打磁体红发座感放波激"   # 轨迹动态（19字）
+      # 其他高频场所/设备（活动轨迹可能出现）
+      - "玄储儿次游童物响戏户伞利公秀好"   # 其他高频（12字，含SIGQ"良好"档）
+      # 活动轨迹补充（房间名/动态词：卫生间 茶桌 影音室 过道 庭院 储藏室 娱乐室 健身房 阅读角 办公桌 车库 宠物）
+      - "茶生走影帽智库庭院藏过娱健身阅办宠乐角"   # 轨迹补充（19字）
+
+  - file: "fonts/NotoSansSC-SemiBold.ttf"
+    id: ui_font_medium
+    size: 16
+    bpp: 4
+    glyphs: *cjk_glyphs
+
+  - file: "fonts/NotoSansSC-SemiBold.ttf"
+    id: ui_font_large
+    size: 20
+    bpp: 4
+    glyphs: *cjk_glyphs
+
+  # ==========================================================
+  # 通知页专用字体（v2.0 NOTIFY）：GB2312 一级 3755 字全量
+  #   通知正文由 HA/Node-RED 任意触发，白名单字表兜不住，只能上全量；
+  #   12px bpp4，3755 字 ≈ 310KB flash，仅本字体使用，三档白名单字体不受影响
+  # ==========================================================
+  - file: "fonts/NotoSansSC-SemiBold.ttf"
+    id: ui_font_notify
+    size: 12
+    bpp: 4
+    glyphs:
+      # 完整 ASCII 可打印字符（含空格）
+      - ' !"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
+      # 中文标点与常用符号（通知文本高频）
+      #   ●○◆■▲ 用于 Node-RED 把状态 emoji 映射成彩色圆点/标记，
+      #   配合 label 的 recolor: true 显示成「#FF5252 ●#」这种内联着色
+      #   11-01 补充：通知里常见的数学/单位/项目符号/序号/框线/全角符号，
+      #   全部用 fontTools 核对过 cmap（‣ U+2023 字体没有，未收）
+      - "℃³㎡·—…“”‘’《》【】（）！？，。、；：●○◆■▲△▽□◇★☆※√∞✓×‹›«»←→↑↓⇧⇩"
+      - "≥≤≠≈±÷°′″‰•◦▪▫‥–～｜│┃「」『』〔〕〖〗〈〉①②③④⑤⑥⑦⑧⑨⑩％＋－＝／＼"
+      # ---- GB2312 一级汉字 3755 字（按区位顺序，每行 60 字）----
+      - "啊阿埃挨哎唉哀皑癌蔼矮艾碍爱隘鞍氨安俺按暗岸胺案肮昂盎凹敖熬翱袄傲奥懊澳芭捌扒叭吧笆八疤巴拔跋靶把耙坝霸罢爸白柏百摆佰败"
+      - "拜稗斑班搬扳般颁板版扮拌伴瓣半办绊邦帮梆榜膀绑棒磅蚌镑傍谤苞胞包褒剥薄雹保堡饱宝抱报暴豹鲍爆杯碑悲卑北辈背贝钡倍狈备惫焙"
+      - "被奔苯本笨崩绷甭泵蹦迸逼鼻比鄙笔彼碧蓖蔽毕毙毖币庇痹闭敝弊必辟壁臂避陛鞭边编贬扁便变卞辨辩辫遍标彪膘表鳖憋别瘪彬斌濒滨宾"
+      - "摈兵冰柄丙秉饼炳病并玻菠播拨钵波博勃搏铂箔伯帛舶脖膊渤泊驳捕卜哺补埠不布步簿部怖擦猜裁材才财睬踩采彩菜蔡餐参蚕残惭惨灿苍"
+      - "舱仓沧藏操糙槽曹草厕策侧册测层蹭插叉茬茶查碴搽察岔差诧拆柴豺搀掺蝉馋谗缠铲产阐颤昌猖场尝常长偿肠厂敞畅唱倡超抄钞朝嘲潮巢"
+      - "吵炒车扯撤掣彻澈郴臣辰尘晨忱沉陈趁衬撑称城橙成呈乘程惩澄诚承逞骋秤吃痴持匙池迟弛驰耻齿侈尺赤翅斥炽充冲虫崇宠抽酬畴踌稠愁"
+      - "筹仇绸瞅丑臭初出橱厨躇锄雏滁除楚础储矗搐触处揣川穿椽传船喘串疮窗幢床闯创吹炊捶锤垂春椿醇唇淳纯蠢戳绰疵茨磁雌辞慈瓷词此刺"
+      - "赐次聪葱囱匆从丛凑粗醋簇促蹿篡窜摧崔催脆瘁粹淬翠村存寸磋撮搓措挫错搭达答瘩打大呆歹傣戴带殆代贷袋待逮怠耽担丹单郸掸胆旦氮"
+      - "但惮淡诞弹蛋当挡党荡档刀捣蹈倒岛祷导到稻悼道盗德得的蹬灯登等瞪凳邓堤低滴迪敌笛狄涤翟嫡抵底地蒂第帝弟递缔颠掂滇碘点典靛垫"
+      - "电佃甸店惦奠淀殿碉叼雕凋刁掉吊钓调跌爹碟蝶迭谍叠丁盯叮钉顶鼎锭定订丢东冬董懂动栋侗恫冻洞兜抖斗陡豆逗痘都督毒犊独读堵睹赌"
+      - "杜镀肚度渡妒端短锻段断缎堆兑队对墩吨蹲敦顿囤钝盾遁掇哆多夺垛躲朵跺舵剁惰堕蛾峨鹅俄额讹娥恶厄扼遏鄂饿恩而儿耳尔饵洱二贰发"
+      - "罚筏伐乏阀法珐藩帆番翻樊矾钒繁凡烦反返范贩犯饭泛坊芳方肪房防妨仿访纺放菲非啡飞肥匪诽吠肺废沸费芬酚吩氛分纷坟焚汾粉奋份忿"
+      - "愤粪丰封枫蜂峰锋风疯烽逢冯缝讽奉凤佛否夫敷肤孵扶拂辐幅氟符伏俘服浮涪福袱弗甫抚辅俯釜斧脯腑府腐赴副覆赋复傅付阜父腹负富讣"
+      - "附妇缚咐噶嘎该改概钙盖溉干甘杆柑竿肝赶感秆敢赣冈刚钢缸肛纲岗港杠篙皋高膏羔糕搞镐稿告哥歌搁戈鸽胳疙割革葛格蛤阁隔铬个各给"
+      - "根跟耕更庚羹埂耿梗工攻功恭龚供躬公宫弓巩汞拱贡共钩勾沟苟狗垢构购够辜菇咕箍估沽孤姑鼓古蛊骨谷股故顾固雇刮瓜剐寡挂褂乖拐怪"
+      - "棺关官冠观管馆罐惯灌贯光广逛瑰规圭硅归龟闺轨鬼诡癸桂柜跪贵刽辊滚棍锅郭国果裹过哈骸孩海氦亥害骇酣憨邯韩含涵寒函喊罕翰撼捍"
+      - "旱憾悍焊汗汉夯杭航壕嚎豪毫郝好耗号浩呵喝荷菏核禾和何合盒貉阂河涸赫褐鹤贺嘿黑痕很狠恨哼亨横衡恒轰哄烘虹鸿洪宏弘红喉侯猴吼"
+      - "厚候后呼乎忽瑚壶葫胡蝴狐糊湖弧虎唬护互沪户花哗华猾滑画划化话槐徊怀淮坏欢环桓还缓换患唤痪豢焕涣宦幻荒慌黄磺蝗簧皇凰惶煌晃"
+      - "幌恍谎灰挥辉徽恢蛔回毁悔慧卉惠晦贿秽会烩汇讳诲绘荤昏婚魂浑混豁活伙火获或惑霍货祸击圾基机畸稽积箕肌饥迹激讥鸡姬绩缉吉极棘"
+      - "辑籍集及急疾汲即嫉级挤几脊己蓟技冀季伎祭剂悸济寄寂计记既忌际妓继纪嘉枷夹佳家加荚颊贾甲钾假稼价架驾嫁歼监坚尖笺间煎兼肩艰"
+      - "奸缄茧检柬碱硷拣捡简俭剪减荐槛鉴践贱见键箭件健舰剑饯渐溅涧建僵姜将浆江疆蒋桨奖讲匠酱降蕉椒礁焦胶交郊浇骄娇嚼搅铰矫侥脚狡"
+      - "角饺缴绞剿教酵轿较叫窖揭接皆秸街阶截劫节桔杰捷睫竭洁结解姐戒藉芥界借介疥诫届巾筋斤金今津襟紧锦仅谨进靳晋禁近烬浸尽劲荆兢"
+      - "茎睛晶鲸京惊精粳经井警景颈静境敬镜径痉靖竟竞净炯窘揪究纠玖韭久灸九酒厩救旧臼舅咎就疚鞠拘狙疽居驹菊局咀矩举沮聚拒据巨具距"
+      - "踞锯俱句惧炬剧捐鹃娟倦眷卷绢撅攫抉掘倔爵觉决诀绝均菌钧军君峻俊竣浚郡骏喀咖卡咯开揩楷凯慨刊堪勘坎砍看康慷糠扛抗亢炕考拷烤"
+      - "靠坷苛柯棵磕颗科壳咳可渴克刻客课肯啃垦恳坑吭空恐孔控抠口扣寇枯哭窟苦酷库裤夸垮挎跨胯块筷侩快宽款匡筐狂框矿眶旷况亏盔岿窥"
+      - "葵奎魁傀馈愧溃坤昆捆困括扩廓阔垃拉喇蜡腊辣啦莱来赖蓝婪栏拦篮阑兰澜谰揽览懒缆烂滥琅榔狼廊郎朗浪捞劳牢老佬姥酪烙涝勒乐雷镭"
+      - "蕾磊累儡垒擂肋类泪棱楞冷厘梨犁黎篱狸离漓理李里鲤礼莉荔吏栗丽厉励砾历利傈例俐痢立粒沥隶力璃哩俩联莲连镰廉怜涟帘敛脸链恋炼"
+      - "练粮凉梁粱良两辆量晾亮谅撩聊僚疗燎寥辽潦了撂镣廖料列裂烈劣猎琳林磷霖临邻鳞淋凛赁吝拎玲菱零龄铃伶羚凌灵陵岭领另令溜琉榴硫"
+      - "馏留刘瘤流柳六龙聋咙笼窿隆垄拢陇楼娄搂篓漏陋芦卢颅庐炉掳卤虏鲁麓碌露路赂鹿潞禄录陆戮驴吕铝侣旅履屡缕虑氯律率滤绿峦挛孪滦"
+      - "卵乱掠略抡轮伦仑沦纶论萝螺罗逻锣箩骡裸落洛骆络妈麻玛码蚂马骂嘛吗埋买麦卖迈脉瞒馒蛮满蔓曼慢漫谩芒茫盲氓忙莽猫茅锚毛矛铆卯"
+      - "茂冒帽貌贸么玫枚梅酶霉煤没眉媒镁每美昧寐妹媚门闷们萌蒙檬盟锰猛梦孟眯醚靡糜迷谜弥米秘觅泌蜜密幂棉眠绵冕免勉娩缅面苗描瞄藐"
+      - "秒渺庙妙蔑灭民抿皿敏悯闽明螟鸣铭名命谬摸摹蘑模膜磨摩魔抹末莫墨默沫漠寞陌谋牟某拇牡亩姆母墓暮幕募慕木目睦牧穆拿哪呐钠那娜"
+      - "纳氖乃奶耐奈南男难囊挠脑恼闹淖呢馁内嫩能妮霓倪泥尼拟你匿腻逆溺蔫拈年碾撵捻念娘酿鸟尿捏聂孽啮镊镍涅您柠狞凝宁拧泞牛扭钮纽"
+      - "脓浓农弄奴努怒女暖虐疟挪懦糯诺哦欧鸥殴藕呕偶沤啪趴爬帕怕琶拍排牌徘湃派攀潘盘磐盼畔判叛乓庞旁耪胖抛咆刨炮袍跑泡呸胚培裴赔"
+      - "陪配佩沛喷盆砰抨烹澎彭蓬棚硼篷膨朋鹏捧碰坯砒霹批披劈琵毗啤脾疲皮匹痞僻屁譬篇偏片骗飘漂瓢票撇瞥拼频贫品聘乒坪苹萍平凭瓶评"
+      - "屏坡泼颇婆破魄迫粕剖扑铺仆莆葡菩蒲埔朴圃普浦谱曝瀑期欺栖戚妻七凄漆柒沏其棋奇歧畦崎脐齐旗祈祁骑起岂乞企启契砌器气迄弃汽泣"
+      - "讫掐恰洽牵扦钎铅千迁签仟谦乾黔钱钳前潜遣浅谴堑嵌欠歉枪呛腔羌墙蔷强抢橇锹敲悄桥瞧乔侨巧鞘撬翘峭俏窍切茄且怯窃钦侵亲秦琴勤"
+      - "芹擒禽寝沁青轻氢倾卿清擎晴氰情顷请庆琼穷秋丘邱球求囚酋泅趋区蛆曲躯屈驱渠取娶龋趣去圈颧权醛泉全痊拳犬券劝缺炔瘸却鹊榷确雀"
+      - "裙群然燃冉染瓤壤攘嚷让饶扰绕惹热壬仁人忍韧任认刃妊纫扔仍日戎茸蓉荣融熔溶容绒冗揉柔肉茹蠕儒孺如辱乳汝入褥软阮蕊瑞锐闰润若"
+      - "弱撒洒萨腮鳃塞赛三叁伞散桑嗓丧搔骚扫嫂瑟色涩森僧莎砂杀刹沙纱傻啥煞筛晒珊苫杉山删煽衫闪陕擅赡膳善汕扇缮墒伤商赏晌上尚裳梢"
+      - "捎稍烧芍勺韶少哨邵绍奢赊蛇舌舍赦摄射慑涉社设砷申呻伸身深娠绅神沈审婶甚肾慎渗声生甥牲升绳省盛剩胜圣师失狮施湿诗尸虱十石拾"
+      - "时什食蚀实识史矢使屎驶始式示士世柿事拭誓逝势是嗜噬适仕侍释饰氏市恃室视试收手首守寿授售受瘦兽蔬枢梳殊抒输叔舒淑疏书赎孰熟"
+      - "薯暑曙署蜀黍鼠属术述树束戍竖墅庶数漱恕刷耍摔衰甩帅栓拴霜双爽谁水睡税吮瞬顺舜说硕朔烁斯撕嘶思私司丝死肆寺嗣四伺似饲巳松耸"
+      - "怂颂送宋讼诵搜艘擞嗽苏酥俗素速粟僳塑溯宿诉肃酸蒜算虽隋随绥髓碎岁穗遂隧祟孙损笋蓑梭唆缩琐索锁所塌他它她塔獭挞蹋踏胎苔抬台"
+      - "泰酞太态汰坍摊贪瘫滩坛檀痰潭谭谈坦毯袒碳探叹炭汤塘搪堂棠膛唐糖倘躺淌趟烫掏涛滔绦萄桃逃淘陶讨套特藤腾疼誊梯剔踢锑提题蹄啼"
+      - "体替嚏惕涕剃屉天添填田甜恬舔腆挑条迢眺跳贴铁帖厅听烃汀廷停亭庭挺艇通桐酮瞳同铜彤童桶捅筒统痛偷投头透凸秃突图徒途涂屠土吐"
+      - "兔湍团推颓腿蜕褪退吞屯臀拖托脱鸵陀驮驼椭妥拓唾挖哇蛙洼娃瓦袜歪外豌弯湾玩顽丸烷完碗挽晚皖惋宛婉万腕汪王亡枉网往旺望忘妄威"
+      - "巍微危韦违桅围唯惟为潍维苇萎委伟伪尾纬未蔚味畏胃喂魏位渭谓尉慰卫瘟温蚊文闻纹吻稳紊问嗡翁瓮挝蜗涡窝我斡卧握沃巫呜钨乌污诬"
+      - "屋无芜梧吾吴毋武五捂午舞伍侮坞戊雾晤物勿务悟误昔熙析西硒矽晰嘻吸锡牺稀息希悉膝夕惜熄烯溪汐犀檄袭席习媳喜铣洗系隙戏细瞎虾"
+      - "匣霞辖暇峡侠狭下厦夏吓掀锨先仙鲜纤咸贤衔舷闲涎弦嫌显险现献县腺馅羡宪陷限线相厢镶香箱襄湘乡翔祥详想响享项巷橡像向象萧硝霄"
+      - "削哮嚣销消宵淆晓小孝校肖啸笑效楔些歇蝎鞋协挟携邪斜胁谐写械卸蟹懈泄泻谢屑薪芯锌欣辛新忻心信衅星腥猩惺兴刑型形邢行醒幸杏性"
+      - "姓兄凶胸匈汹雄熊休修羞朽嗅锈秀袖绣墟戌需虚嘘须徐许蓄酗叙旭序畜恤絮婿绪续轩喧宣悬旋玄选癣眩绚靴薛学穴雪血勋熏循旬询寻驯巡"
+      - "殉汛训讯逊迅压押鸦鸭呀丫芽牙蚜崖衙涯雅哑亚讶焉咽阉烟淹盐严研蜒岩延言颜阎炎沿奄掩眼衍演艳堰燕厌砚雁唁彦焰宴谚验殃央鸯秧杨"
+      - "扬佯疡羊洋阳氧仰痒养样漾邀腰妖瑶摇尧遥窑谣姚咬舀药要耀椰噎耶爷野冶也页掖业叶曳腋夜液一壹医揖铱依伊衣颐夷遗移仪胰疑沂宜姨"
+      - "彝椅蚁倚已乙矣以艺抑易邑屹亿役臆逸肄疫亦裔意毅忆义益溢诣议谊译异翼翌绎茵荫因殷音阴姻吟银淫寅饮尹引隐印英樱婴鹰应缨莹萤营"
+      - "荧蝇迎赢盈影颖硬映哟拥佣臃痈庸雍踊蛹咏泳涌永恿勇用幽优悠忧尤由邮铀犹油游酉有友右佑釉诱又幼迂淤于盂榆虞愚舆余俞逾鱼愉渝渔"
+      - "隅予娱雨与屿禹宇语羽玉域芋郁吁遇喻峪御愈欲狱育誉浴寓裕预豫驭鸳渊冤元垣袁原援辕园员圆猿源缘远苑愿怨院曰约越跃钥岳粤月悦阅"
+      - "耘云郧匀陨允运蕴酝晕韵孕匝砸杂栽哉灾宰载再在咱攒暂赞赃脏葬遭糟凿藻枣早澡蚤躁噪造皂灶燥责择则泽贼怎增憎曾赠扎喳渣札轧铡闸"
+      - "眨栅榨咋乍炸诈摘斋宅窄债寨瞻毡詹粘沾盏斩辗崭展蘸栈占战站湛绽樟章彰漳张掌涨杖丈帐账仗胀瘴障招昭找沼赵照罩兆肇召遮折哲蛰辙"
+      - "者锗蔗这浙珍斟真甄砧臻贞针侦枕疹诊震振镇阵蒸挣睁征狰争怔整拯正政帧症郑证芝枝支吱蜘知肢脂汁之织职直植殖执值侄址指止趾只旨"
+      - "纸志挚掷至致置帜峙制智秩稚质炙痔滞治窒中盅忠钟衷终种肿重仲众舟周州洲诌粥轴肘帚咒皱宙昼骤珠株蛛朱猪诸诛逐竹烛煮拄瞩嘱主著"
+      - "柱助蛀贮铸筑住注祝驻抓爪拽专砖转撰赚篆桩庄装妆撞壮状椎锥追赘坠缀谆准捉拙卓桌琢茁酌啄着灼浊兹咨资姿滋淄孜紫仔籽滓子自渍字"
+      - "鬃棕踪宗综总纵邹走奏揍租足卒族祖诅阻组钻纂嘴醉最罪尊遵昨左佐柞做作坐座"
+      # ---- 通知正文内联图标（MDI 并进 NotoSansSC，见
+      #   .workbuddy/add_mdi_to_notify_font.py；颜色由 NR 侧按类别给） ----
+      - "\U000F0599"   # mdi:weather-sunny
+      - "\U000F0594"   # mdi:weather-night
+      - "\U000F0595"   # mdi:weather-partly-cloudy
+      - "\U000F0590"   # mdi:weather-cloudy
+      - "\U000F0597"   # mdi:weather-rainy
+      - "\U000F059D"   # mdi:weather-windy
+      - "\U000F050F"   # mdi:thermometer
+      - "\U000F058E"   # mdi:water-percent
+      - "\U000F029A"   # mdi:gauge
+      - "\U000F00B5"   # mdi:blur
+      - "\U000F07E4"   # mdi:molecule-co2
+      - "\U000F0D43"   # mdi:air-filter
+      - "\U000F05A8"   # mdi:white-balance-sunny
+      - "\U000F02DC"   # mdi:home
+      - "\U000F0F54"   # mdi:home-thermometer
+      - "\U000F0335"   # mdi:lightbulb
+      - "\U000F001B"   # mdi:air-conditioner
+      - "\U000F0210"   # mdi:fan
+      - "\U000F0290"   # mdi:fridge
+      - "\U000F072A"   # mdi:washing-machine
+      - "\U000F070D"   # mdi:robot-vacuum
+      - "\U000F04C3"   # mdi:speaker
+      - "\U000F0176"   # mdi:coffee
+      - "\U000F0438"   # mdi:radiator
+      - "\U000F04B9"   # mdi:sofa
+      - "\U000F02E3"   # mdi:bed
+      - "\U000F09A0"   # mdi:shower
+      - "\U000F0A72"   # mdi:solar-power
+      - "\U000F058C"   # mdi:water
+      - "\U000F0F92"   # mdi:water-boiler
+      - "\U000F0238"   # mdi:fire
+      - "\U000F0241"   # mdi:flash
+      - "\U000F0079"   # mdi:battery
+      - "\U000F05A9"   # mdi:wifi
+      - "\U000F0928"   # mdi:wifi-strength-4
+      - "\U000F011C"   # mdi:cellphone
+      - "\U000F0004"   # mdi:account
+      - "\U000F000E"   # mdi:account-multiple
+      - "\U000F0150"   # mdi:clock-outline
+      - "\U000F00ED"   # mdi:calendar
+      - "\U000F034E"   # mdi:map-marker
+      - "\U000F0114"   # mdi:cash
+      - "\U000F0584"   # mdi:wallet
+      - "\U000F0FEF"   # mdi:credit-card
+      - "\U000F04DC"   # mdi:store
+      - "\U000F010B"   # mdi:car
+      - "\U000F04CE"   # mdi:star
+      - "\U000F05E0"   # mdi:check-circle
+      - "\U000F0159"   # mdi:close-circle
+      - "\U000F0026"   # mdi:alert
+      - "\U000F02D1"   # mdi:heart
+      - "\U000F009A"   # mdi:bell
+      - "\U000F0369"   # mdi:message-text
+
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: mdi_icons
+    size: 16
+    bpp: 4
+    glyphs: &mdi_glyphs
+      - "\U000F0826"   # mdi:home-account 在家人数（概览页行2格1）
+      - "\U000F048B"   # mdi:server 服务器（系统页主机名）
+      - "\U000F1087"   # mdi:router-network 网关
+      - "\U000F05A9"   # mdi:wifi AP
+      - "\U000F07AE"   # mdi:cctv 监控
+      - "\U000F06E8"   # mdi:lightbulb-on 电灯
+      - "\U000F1846"   # mdi:curtains 窗帘
+      - "\U000F001B"   # mdi:air-conditioner 空调
+      - "\U000F06A5"   # mdi:power-plug 电器
+      - "\U000F011C"   # mdi:cellphone 手机（概览页行2 手机在线数）
+      - "\U000F0595"   # mdi:weather-partly-cloudy 天气
+      - "\U000F0770"   # mdi:home-lightbulb-outline 其他/传感器
+      - "\U000F0241"   # mdi:flash 用电（闪电）
+      - "\U000F0238"   # mdi:fire 用气（火焰）
+      - "\U000F0D3E"   # mdi:transmission-tower 电压（输电塔）
+      - "\U000F0875"   # mdi:gauge-low 水压（低压表盘）
+      - "\U000F01DA"   # mdi:download 下载速度
+      - "\U000F04C5"   # mdi:speedometer 信号质量（系统页右列）
+      - "\U000F00E0"   # mdi:brightness-7 屏幕亮度（系统页中列）
+      - "\U000F050F"   # mdi:thermometer 温度计（网络页风扇列）
+      - "\U000F0379"   # mdi:monitor 显示器（系统页设备信息-屏幕）
+      - "\U000F0815"   # mdi:cellphone-wireless 手机无线（概览页在线设备 A/B 两格）
+      - "\U000F012A"   # mdi:chart-line 上证（折线走势）
+      - "\U000F0128"   # mdi:chart-bar 今日能耗（柱状统计，与上证折线区分）
+      - "\U000F02DC"   # mdi:home 居家模式
+      - "\U000F010B"   # mdi:car 车位
+      - "\U000F0150"   # mdi:clock-outline 时间
+      - "\U000F0395"   # mdi:newspaper 新闻
+      # --- 网络页（page_network.yaml）新增图标 ---
+      - "\U000F0A5F"   # mdi:ip IP地址
+      - "\U000F0FA8"   # mdi:clock-check 已连接时长
+      - "\U000F048D"   # mdi:server-network 路由在线
+      - "\U000F0FB0"   # mdi:devices 控制设备
+      - "\U000F037A"   # mdi:monitor-multiple 终端在线
+      - "\U000F0083"   # mdi:battery-alert 低电量
+      - "\U000F05CB"   # mdi:account-voice ASR语音
+      - "\U000F08F3"   # mdi:nas NAS
+      - "\U000F0EE0"   # mdi:cpu-64-bit CPU使用
+      - "\U000F035B"   # mdi:memory 内存使用
+      - "\U000F0552"   # mdi:upload 上传速度
+      - "\U000F0210"   # mdi:fan 风扇
+      - "\U000F09AB"   # mdi:toilet 弱电间
+      - "\U000F051F"   # mdi:timer-sand 运行时间
+      - "\U000F11E2"   # mdi:router 路由器
+      - "\U000F059F"   # mdi:web 网络总览
+      # --- 概览页新增 ---
+      - "\U000F0010"   # mdi:account-multiple-plus 客人
+      - "\U000F057E"   # mdi:volume-high 语音广播
+      # --- 离线指示（top_layer 全局状态图标）---
+      - "\U000F1BF6"   # mdi:cloud-off 数据通道断开（实心断云）
+      - "\U000F0164"   # mdi:cloud-off-outline 断云描边版（备用）
+      # --- 区块标题图标（标题文字 12px + 图标 16px，label height:18 垂直居中）---
+      - "\U000F0002"   # mdi:access-point-network 网络运行（网络页左列标题）
+      - "\U000F02FD"   # mdi:information-outline 设备信息（系统页左列标题）
+      - "\U000F029A"   # mdi:gauge 系统负载（系统页中列标题）
+      - "\U000F062E"   # mdi:tune 网络参数（系统页右列标题）
+      # --- 通知页（v2.0 NOTIFY）---
+      - "\U000F009F"   # mdi:bell-ring-outline 通知（通知页顶栏标题图标，响铃描边）
+
+  # 图标 12px 版：与 mdi_icons(16px) 共用同一份字形表
+  #   用途：文字用 ui_font_small(12px) 的行，图标也用 12px 才与文字等宽
+  #   行高 13，文字行高 18，所以 label 必须显式 height=18 才能在行内垂直居中
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: mdi_icons_12
+    size: 12
+    bpp: 4
+    glyphs: *mdi_glyphs
+
+  # 图标 20px 版：对应 ui_font_large(20px) 的行
+  #   行高 21，文字行高 30，同样靠 label 的 height=30 居中
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: mdi_icons_20
+    size: 20
+    bpp: 4
+    glyphs: *mdi_glyphs
+
+globals:
+  - id: ui_touch_active
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: lvgl_ready
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: ui_display_temperature
+    type: float
+    restore_value: false
+    initial_value: "NAN"
+  - id: ui_state_code
+    type: uint8_t
+    restore_value: false
+    initial_value: "5"
+  - id: ui_accent_code
+    type: uint8_t
+    restore_value: false
+    initial_value: "2"
+  - id: ui_current_page
+    type: uint8_t
+    restore_value: false
+    initial_value: "0"
+  # --- 屏幕休眠管理 ---
+  - id: ui_auto_sleep_enabled
+    type: bool
+    restore_value: true
+    initial_value: "true"
+  - id: ui_screen_off
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  # 唤醒保持期截止时刻（millis 基准，0 = 无保持）。
+  #   熄屏巡检依赖 LVGL 的「无输入时间」，而亮屏本身不是输入事件——
+  #   通知唤醒时该值往往早已超过熄屏阈值，1s 巡检会立刻把屏又关掉，
+  #   表现为「通知来了闪一下就熄」。wake_screen 里写这里来跳过巡检。
+  - id: ui_hold_until
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  # 默认亮度 60%（v1.1.1 续航优化）：开机点亮与熄屏恢复都取此值；
+  # 用户在系统页滑块或 HA 灯实体上调过亮度后，熄屏恢复仍按用户值。
+  - id: ui_saved_brightness
+    type: float
+    restore_value: false
+    initial_value: "0.6"
+  # --- 每页卡片底色（v1.1.0，HA 下拉选色）---
+  #   卡片底色 = 该值；screen 四周 5px 边距与卡间 3px 缝隙 = 该值 × 0.5
+  #   默认 0x1E1E1E（石墨档）与改造前观感一致；八档可选：
+  #   深红 831C0C / 深黄 866603 / 墨绿 0E3A20 / 浅蓝 017989 / 深蓝 14285A / 深紫 32174D / 深靛 241A48
+  - id: ui_bg_dash
+    type: uint32_t
+    restore_value: true
+    initial_value: "0x1E1E1E"
+  - id: ui_bg_net
+    type: uint32_t
+    restore_value: true
+    initial_value: "0x1E1E1E"
+  - id: ui_bg_sys
+    type: uint32_t
+    restore_value: true
+    initial_value: "0x1E1E1E"
+# 时钟刷新（概览页行1 的时间标签）
+#   这里统一改写到概览页的 home_time_label，避免引用不存在的 id。
+#   优先用 HA 推送的中文时间实体（ha_time_text），取不到时用本机 SNTP 时间兜底。
+#   SNTP 只要设备能上网就能对时，不依赖 HA 是否可达。
+interval:
+  # ----------------------------------------------------------
+  # 数据通道状态巡检（1 秒一次）
+  #   判定：超过 ha_stale_ms（15s）没收到新的 MQTT 数据帧 → 离线
+  #   开机后前 20 秒不显示离线（等 WiFi + MQTT + 首帧数据到位），
+  #   避免开机瞬间闪一下红字。
+  # ----------------------------------------------------------
+  - interval: 1s
+    then:
+      - lambda: |-
+          if (!id(lvgl_ready)) return;
+
+          const uint32_t now_ms = millis();
+          const uint32_t last   = id(ha_data_last_ms);
+
+          // 开机保护期：2 秒到 20 秒之间不报离线
+          if (now_ms < 20000) {
+            lv_obj_add_flag(id(offlink_icon), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(offlink_text), LV_OBJ_FLAG_HIDDEN);
+            return;
+          }
+
+          const bool stale = (last == 0) || (now_ms - last > id(ha_stale_ms));
+          static bool shown = false;
+          if (stale != shown) {
+            shown = stale;
+            if (stale) {
+              lv_obj_clear_flag(id(offlink_icon), LV_OBJ_FLAG_HIDDEN);
+              lv_obj_clear_flag(id(offlink_text), LV_OBJ_FLAG_HIDDEN);
+              ESP_LOGW("offlink", "数据通道离线（最后更新 %u ms 前）",
+                       (unsigned)(last == 0 ? 0 : now_ms - last));
+            } else {
+              lv_obj_add_flag(id(offlink_icon), LV_OBJ_FLAG_HIDDEN);
+              lv_obj_add_flag(id(offlink_text), LV_OBJ_FLAG_HIDDEN);
+              ESP_LOGI("offlink", "数据通道恢复");
+            }
+          }
+
+  - interval: 1s
+    then:
+      - lambda: |-
+          if (!id(lvgl_ready)) return;
+          if (id(ui_current_page) != 0) return;
+          if (id(ha_time_text).has_state() && !id(ha_time_text).state.empty()) return;
+
+          auto now = id(system_time).now();
+          if (now.is_valid()) {
+            char tbuf[48];
+            static const char* wk[] = {"日", "一", "二", "三", "四", "五", "六"};
+            int w = now.day_of_week - 1;
+            if (w < 0 || w > 6) w = 0;
+            snprintf(tbuf, sizeof(tbuf), "%d月%d日 星期%s %02d:%02d",
+                     now.month, now.day_of_month, wk[w], now.hour, now.minute);
+            lv_label_set_text(id(home_time_label), tbuf);
+          }
+
+  # 启动后做一次字库自检：日志里打印 ok 表示该字已编译进字体，MISS 表示缺失
+  - interval: 15s
+    then:
+      - lambda: |-
+          static bool checked = false;
+          if (checked || !id(lvgl_ready)) return;
+          checked = true;
+          const lv_font_t *f = lv_obj_get_style_text_font(id(home_time_label), LV_PART_MAIN);
+          if (f == nullptr) {
+            ESP_LOGW("font", "home_time_label font is null");
+            return;
+          }
+          static const uint32_t cps[] = {
+            0x6982, 0x89C8, 0x7F51, 0x7EDC, 0x7CFB, 0x7EDF,
+            0x670D, 0x52A1, 0x5668, 0x8BBE, 0x5907, 0x7535,
+          };
+          for (uint32_t cp : cps) {
+            lv_font_glyph_dsc_t dsc;
+            bool ok = lv_font_get_glyph_dsc(f, &dsc, cp, 0);
+            ESP_LOGI("font", "U+%04lX %s", (unsigned long) cp, ok ? "ok" : "MISS");
+          }
+
+  # ============================================================
+  # 熄屏巡检：每秒判断是否该关闭背光
+  #   · 空闲时长取 LVGL 的"无输入时间"（触摸最后活动至今），
+  #     比手写 millis() 更准，也不用自己维护计时变量；
+  #   · 阈值来自 HA 可调的 number 实体 sleep_timeout_number（默认 60s）；
+  #   · 只关背光，不暂停 LVGL —— 唤醒时画面立刻就在，不会卡一下。
+  #   函数名用 lv_disp_get_inactive_time：与 ESPHome 内置 lvgl 的
+  #   lvgl.is_idle 条件实现完全一致（源码 automation.py 里就是
+  #   lv_expr.disp_get_inactive_time(...)）。
+  # ============================================================
+  - interval: 1s
+    then:
+      - lambda: |-
+          if (!id(lvgl_ready)) return;
+          if (id(ui_screen_off)) return;
+          if (!id(ui_auto_sleep_enabled)) return;
+
+          // 唤醒保持期内不熄屏（有符号差值比较，millis() 回绕也正确）
+          if (id(ui_hold_until) != 0 && (int32_t) (millis() - id(ui_hold_until)) < 0) return;
+
+          uint32_t idle_ms = lv_disp_get_inactive_time(NULL);
+          uint32_t sleep_ms = (uint32_t) (id(sleep_timeout_number).state * 1000.0f);
+          if (idle_ms >= sleep_ms) {
+            id(sleep_screen).execute();
+          }
+
+  # ============================================================
+  # TAB 当前页高亮（v2.0）
+  #   ui/tab_bar.yaml 是四页共用的导航片段，不带 id（否则四次 include
+  #   会重复定义）。这里按 ui_current_page 找到底部那张 h49 的卡片，
+  #   把第 idx 个子标签刷成青色 4FD8FA，其余刷灰 757575。
+  #   ui_current_page 编码：0 家居 / 2 网络 / 3 系统 / 4 通知（1 弃用）
+  # ============================================================
+  - interval: 200ms
+    then:
+      - lambda: |-
+          if (!id(lvgl_ready)) return;
+          static int last_page = -1;
+          const int p = id(ui_current_page);
+          if (p == last_page) return;
+          last_page = p;
+          id(ui_tab_highlight).execute();
+
+script:
+  - id: ui_tab_highlight
+    mode: restart
+    then:
+      - lambda: |-
+          const int p = id(ui_current_page);
+          const int idx = (p == 0) ? 0 : (p == 2) ? 1 : (p == 3) ? 2 : (p == 4) ? 3 : -1;
+          if (idx < 0) return;
+
+          // LVGL 9 把 lv_scr_act 改成 lv_screen_active，这里两版都兼容
+          #if LVGL_VERSION_MAJOR >= 9
+          lv_obj_t *scr = lv_screen_active();
+          #else
+          lv_obj_t *scr = lv_scr_act();
+          #endif
+          if (scr == nullptr) return;
+          const uint32_t n = lv_obj_get_child_count(scr);
+          for (uint32_t i = 0; i < n; i++) {
+            lv_obj_t *card = lv_obj_get_child(scr, i);
+            if (card == nullptr) continue;
+            if (lv_obj_get_height(card) != 49) continue;    // TAB 卡片高度
+            if (lv_obj_get_y(card) < 260) continue;         // 且必须贴着底部
+            for (uint32_t j = 0; j < 4 && j < lv_obj_get_child_count(card); j++) {
+              lv_obj_t *lb = lv_obj_get_child(card, j);
+              if (lb == nullptr) continue;
+              lv_obj_set_style_text_color(lb, lv_color_hex(j == (uint32_t) idx ? 0x4FD8FA : 0x757575), 0);
+            }
+            return;
+          }

@@ -1,0 +1,85 @@
+# ==========================================================
+# 底部四键 TAB 导航（v2.0）—— 四个页面共用，唯一来源
+# ----------------------------------------------------------
+# 用法：页面 widgets 列表末尾写一行
+#         - !include tab_bar.yaml
+# 说明：
+#   · 这里不写任何 id：同一份片段被四个页面各 include 一次，
+#     若带 id 会重复定义导致编译报错；
+#   · 四个 label 一律先按未选中灰 757575 建出来，当前页的青色
+#     由 ui_common.yaml 的 ui_tab_highlight 在切页后按
+#     ui_current_page 上色（child 0..3 依次对应 家居/网络/系统/通知）；
+#   · 几何一旦定稿，以后调像素只改这一个文件。
+#
+# 排版（11-01 第五轮）：为什么这次不再用「等分块 + 块内居中」
+#   前三轮一直按四等分块（每块 117）加 text_align: CENTER 推算，
+#   理论左右各留 38.5px、视觉对称；实际却始终是「左贴边、右边多出约两个字」。
+#   原因：label 不显式约束时尺寸是 SIZE_CONTENT（宽度随文本走），
+#   117 的块宽没起作用，CENTER 也就没机会生效，文字一律从块左边缘开始排。
+#   所以改成「按墨迹定位」，不再依赖宽度与对齐：
+#     · x 直接写文字左边缘的绝对位置
+#     · width 40 = 20px 字号 × 2 字（fontTools 实测 advance 1000/1000，精确 40px）
+#       CLIP 锁宽，兼容「width 生效」的环境；不生效时内容宽也是 40，结果一致
+#     · 不写 text_align，走默认 LEFT，两种情形下墨迹位置完全相同
+#   第五轮先按左右各 38 对称排（38/156/274/392），用户实测仍偏右，
+#   第六轮整体左移 10px → 28/146/264/382，用户实测仍偏右，
+#   第七轮再左移 10px → 18/136/254/372，用户实测「太靠左」，
+#   第八轮按用户给的实际尺度右移 1~1.3mm：
+#     屏 3.5 寸 320x480 → 对角 576.8px ÷ 3.5in ≈ 165ppi → 1mm ≈ 6.5px
+#     1.3mm ≈ 8px，但 LVGL 行盒左侧本身还有 1~2px 内边距，实际取 7px
+#     → 墨迹左 25 / 143 / 261 / 379（间隙仍 78）
+#     墨迹右： 65 / 183 / 301 / 419  →  左 25 / 右 51
+#   说明：这几轮「偏右」的体感来自 LVGL 行盒左侧还有一点内边距，
+#   实际墨迹比 x 再右 1~2px；用户按视觉调，就按用户眼睛来。
+# ==========================================================
+obj:
+  x: 5
+  y: 266
+  width: 470
+  height: 49
+  bg_color: 0x1E1E1E
+  border_width: 1
+  outline_width: 1
+  radius: 10
+  scrollable: false
+  widgets:
+    - label:
+        align: left_mid
+        x: 25
+        width: 40
+        long_mode: CLIP
+        text: "家居"
+        text_font: ui_font_large
+        text_color: 0x757575
+        on_click:
+          - lvgl.page.show: dashboard_page
+    - label:
+        align: left_mid
+        x: 143
+        width: 40
+        long_mode: CLIP
+        text: "网络"
+        text_font: ui_font_large
+        text_color: 0x757575
+        on_click:
+          - lvgl.page.show: network_page
+    - label:
+        align: left_mid
+        x: 261
+        width: 40
+        long_mode: CLIP
+        text: "系统"
+        text_font: ui_font_large
+        text_color: 0x757575
+        on_click:
+          - lvgl.page.show: system_page
+    - label:
+        align: left_mid
+        x: 379
+        width: 40
+        long_mode: CLIP
+        text: "通知"
+        text_font: ui_font_large
+        text_color: 0x757575
+        on_click:
+          - lvgl.page.show: notify_page
