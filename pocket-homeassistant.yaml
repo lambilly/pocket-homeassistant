@@ -161,7 +161,9 @@ font:
   - file: "fonts/NotoSansSC-SemiBold.ttf"
     id: f22
     size: 22
-    glyphs: " %-.:/0123456789ABFHIPTUVWacdeikmnost"
+    # 全 ASCII 可打印字符 + 常用符号。别再用「只列用到的字母」的写法——
+    # 少一个字符就整行画不出来，日志只会刷 Codepoint not found。
+    glyphs: " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~°"
 
 spi:
   id: lcd_qspi
@@ -187,6 +189,8 @@ display:
     color_order: rgb
     invert_colors: true
     update_interval: 1s
+    # lambda 内部已 it.fill() 铺满全屏，关掉驱动的自动清屏，省一次 307KB memset
+    auto_clear_enabled: false
     init_sequence:
       - [0xF1, 0x00]
       - [0x60, 0x00, 0x00, 0x00]
