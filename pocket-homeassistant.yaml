@@ -193,6 +193,13 @@ display:
     # lambda 内部已 it.fill() 铺满全屏，关掉驱动的自动清屏，省一次 307KB memset
     auto_clear_enabled: false
     init_sequence:
+      # 软复位 + 120ms：屏的 RESET 硬线接在主控 EN 上（原理图 QD1 pin15 → RESET 网），
+      # OTA/软件重启时 EN 不动作、屏得不到硬复位；mipi_spi 自带的软复位只等 10ms，
+      # ST77922 要求 120ms，否则整串初始化发给"未醒"的屏 → OTA 后黑屏，按 RESET 才亮。
+      - [0x01]
+      - delay 120ms
+      - [0x01]
+      - delay 120ms
       - [0xF1, 0x00]
       - [0x60, 0x00, 0x00, 0x00]
       - [0x65, 0x80]

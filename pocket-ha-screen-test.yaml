@@ -83,6 +83,11 @@ display:
     invert_colors: true
     update_interval: 10s
     init_sequence:
+      # 软复位 + 120ms：屏 RESET 接在 EN 上，OTA/软件重启后需靠软复位唤醒（ST77922 要求 120ms）
+      - [0x01]
+      - delay 120ms
+      - [0x01]
+      - delay 120ms
       - [0xF1, 0x00]
       - [0x60, 0x00, 0x00, 0x00]
       - [0x65, 0x80]
