@@ -463,6 +463,76 @@ i2c:
   sda: GPIO38
   frequency: 400kHz
 
+# ==========================================================
+# 音频输出：ES8311 codec（I2C 0x18）→ FM8002E 功放 → 板载喇叭
+#   I2S 引脚：MCLK 17 / BCLK 18 / LRCK 21 / DOUT 15（→codec SDIN）
+#   麦克风 DIN 16 走同一总线（第二轮启用，见 docs/音频-ES8311方案.md）
+#   PA 使能 IO1：低电平开功放，用 inverted:true 统一成"ON=有声"
+#   用途：HA TTS 播报、提示音、门铃（HA 里会多出 media_player 实体）
+# ==========================================================
+i2s_audio:
+  - id: i2s_bus
+    i2s_lrclk_pin: GPIO21
+    i2s_bclk_pin: GPIO18
+    i2s_mclk_pin: GPIO17
+
+audio_dac:
+  - platform: es8311
+    id: es8311_dac
+    i2c_id: touch_i2c        # 与触摸共用 I2C 总线（0x18 vs 0x55，不冲突）
+    sample_rate: 16000       # TTS 常用 16k，与 speaker 必须一致
+    bits_per_sample: 16bit
+    use_mclk: true           # ESP32 输出 MCLK = 256×16k = 4.096MHz
+    use_microphone: false    # 第一轮先只跑播放；MIC 第二轮再开
+
+speaker:
+  - platform: i2s_audio
+    id: spk_out
+    i2s_audio_id: i2s_bus
+    dac_type: external
+    audio_dac: es8311_dac
+    i2s_dout_pin: GPIO15
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: mono
+    buffer_duration: 200ms
+  # ESPHome 要求公告/媒体两条管线各用一个 speaker，用 mixer 把同一路物理喇叭
+  # 拆成两个虚拟 source（音频在 mixer 内混音后统一送到 spk_out）
+  - platform: mixer
+    id: spk_mix
+    output_speaker: spk_out
+    num_channels: 1
+    source_speakers:
+      - id: spk_announce      # 公告/TTS 播报
+      - id: spk_media         # 音乐/媒体
+
+media_player:
+  - platform: speaker
+    id: pocket_media
+    name: "Pocket Speaker"
+    icon: mdi:speaker
+    # 公告管线（HA 的 announcement/语音播报优先走这里，WAV 最稳）
+    announcement_pipeline:
+      speaker: spk_announce
+      format: WAV
+      sample_rate: 16000
+      num_channels: 1
+    # 媒体管线：NONE = 打开全部解码器（WAV/MP3/FLAC），兼容各种 TTS 输出
+    media_pipeline:
+      speaker: spk_media
+      format: NONE
+      sample_rate: 16000
+      num_channels: 1
+    volume_initial: 0.6
+    task_stack_in_psram: true       # 解码任务栈放 PSRAM，给 LVGL 腾内部 RAM
+    on_play:
+      - switch.turn_on: pa_en       # 先开功放再出声
+    on_announcement:
+      - switch.turn_on: pa_en
+    on_idle:
+      - delay: 150ms                # 等尾音放完再关，避免"咔"声
+      - switch.turn_off: pa_en
+
 output:
   - platform: ledc
     pin:
@@ -1549,6 +1619,17 @@ select:
           page: 2
 
 switch:
+  # 功放使能：GPIO1 低电平有效 → inverted:true 让 ON = 输出低 = 功放开
+  #   由 media_player 的 on_play / on_idle 自动控制，HA 里也可见
+  - platform: gpio
+    id: pa_en
+    name: "Speaker PA"
+    internal: true
+    pin:
+      number: GPIO1
+      inverted: true
+    restore_mode: ALWAYS_OFF         # 上电默认关功放（无底噪）
+
   # 自动休眠总开关（关掉后常亮，适合调试/演示）
   - platform: template
     id: auto_sleep_switch
