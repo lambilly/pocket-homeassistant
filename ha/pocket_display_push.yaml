@@ -1,7 +1,7 @@
 # ==========================================================
 # Pocket HomeAssistant —— 数据推送（HA → MQTT → ESP32 屏幕）
 # ==========================================================
-# 安装位置：/config/packages/monitor_display_push.yaml
+# 安装位置：/config/packages/pocket_display_push.yaml
 # 启用方式：configuration.yaml 里要有
 #   homeassistant:
 #     packages: !include_dir_named packages
@@ -30,8 +30,8 @@
 # ==========================================================
 
 automation:
-  - id: monitor_display_push
-    alias: "Monitor Display: 推送数据到 MQTT"
+  - id: pkha_display_push
+    alias: "PKHA: 推送数据到 MQTT"
     description: >-
       3.0：实体选择集中到 SLOT 槽位表，payload 与 v2 完全一致
     mode: single
