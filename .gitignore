@@ -19,3 +19,7 @@ fonts/*.ttc
 
 # 临时文件
 *.tmp
+
+# 实测照片不入库
+*.jpg
+*.jpeg
