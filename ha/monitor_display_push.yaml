@@ -1,0 +1,219 @@
+# ==========================================================
+# HA Monitor Display —— 数据推送（HA → MQTT → ESP32 屏幕）
+# ==========================================================
+# 安装位置：/config/packages/monitor_display_push.yaml
+# 启用方式：configuration.yaml 里要有
+#   homeassistant:
+#     packages: !include_dir_named packages
+#
+# 作用：
+#   每 5 秒把 49 个槽位实体的当前值压成一个 JSON，publish 到
+#   home/ha-monitor-display（retain=true），屏幕订阅这一个主题即可
+#   在任何网络下（家里 / 公司 / 酒店）拿到全部数据。
+#
+# 为什么用 retain：
+#   屏幕断电重启、或刚连上 broker 时，立刻能收到最后一帧数据，
+#   不用干等 5 秒。也让"离线期间的数据"在重连后第一时间补上。
+#
+# 字段命名规则（与 ESP32 侧 global 一一对应，勿随意改动）：
+#   数值    -> float（HA 里不可用时输出 null，屏幕端转成 NAN）
+#   开关/在线 -> 1 / 0（不用 true/false，省流量且 ESP32 解析更简单）
+#   文本    -> 原样字符串（null -> 空串）
+#
+# ==========================================================
+# ★★ 3.0 槽位表：全文件唯一需要按用户修改的部分 ★★
+#   下面 SLOT 表的"右边"填你自己 HA 里的 entity_id，左边键名与
+#   屏幕固件约定，一律不要改。填错实体 HA 不会报错，屏幕对应
+#   位置显示 "--"。改完本表后在 开发者工具→YAML→自动化 重新加载
+#   即生效，无需重编译烧录。
+#   （screen_bright 是屏幕自身背光，由控制包创建，不开放槽位）
+# ==========================================================
+
+automation:
+  - id: monitor_display_push
+    alias: "Monitor Display: 推送数据到 MQTT"
+    description: >-
+      3.0：实体选择集中到 SLOT 槽位表，payload 与 v2 完全一致
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: time_pattern
+        seconds: "/5"
+    variables:
+      # ---- 温度 / 风扇（机柜） ----
+      SLOT:
+        fan1_rpm:       sensor.fan_pwm_controller_fan_1_speed          # 1号风扇转速
+        fan2_rpm:       sensor.fan_pwm_controller_fan_2_speed          # 2号风扇转速
+        fan1_speed:     fan.fan_pwm_controller_fan_1                   # 1号风扇百分比（fan 实体）
+        fan2_speed:     fan.fan_pwm_controller_fan_2                   # 2号风扇百分比（fan 实体）
+        temp_front:     sensor.fan_pwm_controller_temperature          # 前温度
+        temp_back:      sensor.miaomiaoc_cn_blt_3_1f33gjhbc4k00_t2_temperature_p_2_1   # 背面温度
+        temp_in:        sensor.miaomiaoc_cn_blt_3_1f308atcc4o01_t2_temperature_p_2_1   # 室内温度
+        temp_out:       sensor.miaomiaoc_cn_blt_3_1fpsendsc4g01_t2_temperature_p_2_1   # 室外温度
+        # ---- 人数统计 ----
+        family_home:    sensor.family_home_count                       # 在家人数
+        guest_visit:    sensor.guest_visit_count                       # 来访人数
+        phone_online:   sensor.phone_online_count                      # 手机在线数
+        # ---- 网络设备统计 ----
+        server_count:   sensor.server_online_count                     # 服务器在线
+        gateway_count:  sensor.gateway_online_count                    # 网关在线
+        ap_count:       sensor.ap_online_count                         # AP 在线
+        monitor_count:  sensor.device_monitor_count                    # 监控设备数
+        light_on:       sensor.light_on_count                          # 灯开启数
+        curtain_closed: sensor.curtain_closed_count                    # 窗帘关闭数
+        climate_on:     sensor.climate_on_count                        # 空调开启数
+        equipment_on:   sensor.equipment_on_count                      # 电器开启数
+        asr_count:      sensor.asr_online_count                        # ASR 在线
+        router_count:   sensor.router_online_count                     # 路由器在线
+        device_ctrl:    sensor.device_control_count                    # 设备控制数
+        terminal_count: sensor.terminal_online_count                   # 终端在线
+        low_battery:    sensor.low_battery_count                       # 低电量设备数
+        # ---- 能耗 / 环境 ----
+        weather:        weather.tian_qi                                # 天气（温度取属性 temperature）
+        outdoor_temp:   sensor.outdoor_temperature                     # 户外温度
+        energy_today:   sensor.tasmota_energy_today                    # 今日用电
+        gas_today:      sensor.ri_yong_qi_liang                        # 今日用气
+        voltage:        sensor.tasmota_energy_voltage                  # 电压
+        water_pressure: sensor.maze_wateronev3_tp_f8e644               # 水压
+        # ---- 车辆 ----
+        xuanyi_dist:    sensor.wo_de_jia_xuan_yi_distance              # 轩逸距离
+        byd_dist:       sensor.wo_de_jia_bi_ya_di_distance             # 比亚迪距离
+        # ---- 路由器 / NAS ----
+        wan_uptime:     sensor.tp_link_smb_tl_r498gpm_ac_uptime        # WAN 在线时长
+        external_ip:    sensor.tp_link_smb_tl_r498gpm_ac_external_ip   # 外网 IP
+        wan_status:     binary_sensor.tp_link_smb_tl_r498gpm_ac_wan_status  # WAN 状态（开关型）
+        nas_cpu:        sensor.lamnas_ws_cpu_utilization_total         # NAS CPU
+        nas_mem:        sensor.lamnas_ws_memory_usage_real             # NAS 内存
+        nas_download:   sensor.lamnas_ws_download_throughput           # NAS 下载
+        nas_upload:     sensor.lamnas_ws_upload_throughput             # NAS 上传
+        # ---- 在线设备指示（通用两格：状态 + 可自定义显示名） ----
+        # device_*_online 填 binary_sensor（on=在线、off=离线）
+        # device_*_name   填纯文本（不是实体 ID）；留空则屏幕显示「Nova13 / Nova12」
+        device_a_online: binary_sensor.lam_nova13                      # 在线设备 A 状态（binary_sensor）
+        device_b_online: binary_sensor.su_nova12                       # 在线设备 B 状态（binary_sensor）
+        device_a_name:  "Nova13"                                        # 设备 A 显示名（纯文本）
+        device_b_name:  "Nova12"                                        # 设备 B 显示名（纯文本）
+        # ---- 开关型（on=1 / off=0） ----
+        voice_broadcast: switch.voice_broadcast                        # 语音播报开关
+        fan_in_switch:  switch.ruo_dian_xiang_feng_shan_sonoff_1002b4248d_1   # 内风扇开关
+        fan_out_switch: switch.ruo_dian_xiang_feng_shan_sonoff_1002b4248d_2   # 外风扇开关
+        # ---- 文本 ----
+        time_text:      sensor.zhong_wen_shi_jian                      # 中文时间
+        stock:          sensor.mei_ri_gu_zhi                           # 股票（涨跌幅取属性 sh000001.changeRatio）
+        home_mode:      sensor.ju_jia_mo_shi                           # 居家模式（音量取 volume 类属性）
+        activity_log:   sensor.huo_dong_gui_ji                         # 活动轨迹
+        parking_status: sensor.parking_status                          # 车位状态
+    actions:
+      - action: mqtt.publish
+        data:
+          topic: home/ha-monitor-display
+          retain: true
+          qos: 1
+          payload: >-
+            {%- set SLOT = SLOT | default({}) -%} {#- 兜底：HA 装载期预校验时 SLOT 可能未定义，给空字典让模板可渲染，所有字段优雅落为 -- -#}
+            {#- 开关类字段：先在 {% %} 里算成真正的数字，再放进字典。
+                  · 实体不存在 / 不可用  -> none（JSON null，屏幕显示 "--"）
+                  · on                   -> 1
+                  · 其余（含 off）        -> 0
+                注意：绝不能用 macro 在 {{ }} 表达式里返回值——Jinja 的
+                macro 输出是"字符串"，会把 1 变成 "1"、null 变成 "null"，
+                ESP32 侧 is<int>() 判定失败，字段全落空。 -#}
+            {%- set ns = namespace(
+                  device_a_online = none,
+                  device_b_online = none,
+                  wan_status      = none,
+                  voice_broadcast = none,
+                  fan_in_switch   = none,
+                  fan_out_switch  = none,
+                  stock_chg       = none) -%}
+            {%- set ns.device_a_online = none if states(SLOT.device_a_online | default('')) in ['unknown', 'unavailable'] else (1 if is_state(SLOT.device_a_online | default(''), 'on') else 0) -%}
+            {%- set ns.device_b_online = none if states(SLOT.device_b_online | default('')) in ['unknown', 'unavailable'] else (1 if is_state(SLOT.device_b_online | default(''), 'on') else 0) -%}
+            {%- set ns.wan_status      = none if states(SLOT.wan_status | default('')) in ['unknown', 'unavailable'] else (1 if is_state(SLOT.wan_status | default(''), 'on') else 0) -%}
+            {%- set ns.voice_broadcast = none if states(SLOT.voice_broadcast | default('')) in ['unknown', 'unavailable'] else (1 if is_state(SLOT.voice_broadcast | default(''), 'on') else 0) -%}
+            {%- set ns.fan_in_switch   = none if states(SLOT.fan_in_switch | default('')) in ['unknown', 'unavailable'] else (1 if is_state(SLOT.fan_in_switch | default(''), 'on') else 0) -%}
+            {%- set ns.fan_out_switch  = none if states(SLOT.fan_out_switch | default('')) in ['unknown', 'unavailable'] else (1 if is_state(SLOT.fan_out_switch | default(''), 'on') else 0) -%}
+            {#- 居家模式音量百分比：属性名依次尝试 volume_percent / volume / volume_level / percentage；
+                 值可能是 65、"65%"、65.0，统一去除百分号后转数字；全取不到则为 none（屏幕不显示）。 -#}
+            {%- set ns.vol_raw = none -%}
+            {%- for _a in ['volume_percent', 'volume', 'volume_level', 'percentage'] -%}
+              {%- if ns.vol_raw is none -%}
+                {%- set ns.vol_raw = state_attr(SLOT.home_mode | default(''), _a) -%}
+              {%- endif -%}
+            {%- endfor -%}
+            {#- 上证涨跌幅：股票实体的属性键是 sh000001（全小写），
+                 里面 changeRatio 就是涨跌幅（涨为正、跌为负）。
+                 兼容 Sh000001 写法；属性缺失/不是字典/没有该键 -> none（屏幕显灰）。 -#}
+            {%- set stk = state_attr(SLOT.stock | default(''), 'sh000001')
+                          or state_attr(SLOT.stock | default(''), 'Sh000001') -%}
+            {%- set ns.stock_chg = stk.get('changeRatio') if stk is mapping and 'changeRatio' in stk else none -%}
+            {#- 车辆距离（km）：车位状态卡片下方两行（轩逸黄 / 比亚迪粉）。
+                注意：注释只能用这种花括号注释放在表达式外，
+                表达式内部出现井号会直接语法报错。
+                screen_bright：屏幕自己的背光，由控制包创建，不开放槽位。 -#}
+            {{
+              {
+                "ts": now().timestamp() | int,
+
+                "fan1_rpm":         states(SLOT.fan1_rpm | default('')) | float(none),
+                "fan2_rpm":         states(SLOT.fan2_rpm | default('')) | float(none),
+                "fan1_speed":       state_attr(SLOT.fan1_speed | default(''), 'percentage') | float(none),
+                "fan2_speed":       state_attr(SLOT.fan2_speed | default(''), 'percentage') | float(none),
+                "temp_front":       states(SLOT.temp_front | default('')) | float(none),
+                "temp_back":        states(SLOT.temp_back | default('')) | float(none),
+                "temp_in":          states(SLOT.temp_in | default('')) | float(none),
+                "temp_out":         states(SLOT.temp_out | default('')) | float(none),
+
+                "family_home":      states(SLOT.family_home | default('')) | float(none),
+                "guest_visit":      states(SLOT.guest_visit | default('')) | float(none),
+                "phone_online":     states(SLOT.phone_online | default('')) | float(none),
+                "server_count":     states(SLOT.server_count | default('')) | float(none),
+                "gateway_count":    states(SLOT.gateway_count | default('')) | float(none),
+                "ap_count":         states(SLOT.ap_count | default('')) | float(none),
+                "monitor_count":    states(SLOT.monitor_count | default('')) | float(none),
+                "light_on":         states(SLOT.light_on | default('')) | float(none),
+                "curtain_closed":   states(SLOT.curtain_closed | default('')) | float(none),
+                "climate_on":       states(SLOT.climate_on | default('')) | float(none),
+                "equipment_on":     states(SLOT.equipment_on | default('')) | float(none),
+
+                "weather_temp":     state_attr(SLOT.weather | default(''), 'temperature') | float(none),
+                "outdoor_temp":     states(SLOT.outdoor_temp | default('')) | float(none),
+                "energy_today":     states(SLOT.energy_today | default('')) | float(none),
+                "gas_today":        states(SLOT.gas_today | default('')) | float(none),
+                "voltage":          states(SLOT.voltage | default('')) | float(none),
+                "water_pressure":   states(SLOT.water_pressure | default('')) | float(none),
+
+                "xuanyi_dist":      states(SLOT.xuanyi_dist | default('')) | float(none),
+                "byd_dist":         states(SLOT.byd_dist | default('')) | float(none),
+
+                "wan_uptime":       states(SLOT.wan_uptime | default('')) | float(none),
+                "asr_count":        states(SLOT.asr_count | default('')) | float(none),
+                "router_count":     states(SLOT.router_count | default('')) | float(none),
+                "device_ctrl":      states(SLOT.device_ctrl | default('')) | float(none),
+                "terminal_count":   states(SLOT.terminal_count | default('')) | float(none),
+                "low_battery":      states(SLOT.low_battery | default('')) | float(none),
+                "nas_cpu":          states(SLOT.nas_cpu | default('')) | float(none),
+                "nas_mem":          states(SLOT.nas_mem | default('')) | float(none),
+                "screen_bright":    state_attr('light.ha_monitor_display_screen_light', 'brightness') | float(none),
+                "nas_download":     states(SLOT.nas_download | default('')) | float(none),
+                "nas_upload":       states(SLOT.nas_upload | default('')) | float(none),
+
+                "device_a_online": ns.device_a_online,
+                "device_b_online": ns.device_b_online,
+                "device_a_name":   SLOT.device_a_name | default(''),
+                "device_b_name":   SLOT.device_b_name | default(''),
+                "wan_status":      ns.wan_status,
+                "voice_broadcast": ns.voice_broadcast,
+                "fan_in_switch":   ns.fan_in_switch,
+                "fan_out_switch":  ns.fan_out_switch,
+
+                "time_text":       states(SLOT.time_text | default('')) | default('', true),
+                "external_ip":     states(SLOT.external_ip | default('')) | default('', true),
+                "weather":         states(SLOT.weather | default('')) | default('', true),
+                "stock":           states(SLOT.stock | default('')) | default('', true),
+                "stock_chg":       ns.stock_chg,
+                "home_mode":       states(SLOT.home_mode | default('')) | default('', true),
+                "mode_volume":     ns.vol_raw | string | replace('%', '') | float(none),
+                "activity_log":    states(SLOT.activity_log | default('')) | default('', true),
+                "parking_status":  states(SLOT.parking_status | default('')) | default('', true)
+              } | to_json
+            }}
