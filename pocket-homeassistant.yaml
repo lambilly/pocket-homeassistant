@@ -309,11 +309,11 @@ external_components:
     components: [st77922_touch]
 
 # 这颗芯片是触显一体：显示和触摸在同一颗 die，触摸走独立 I2C 地址 0x55。
-# 坐标映射（tab1/2/4 三角实测标定）：芯片原生坐标是竖屏 320x480，
-# 屏幕横装后：显示横向 = 原生纵向（不反转）、显示纵向 = 320 - 原生横向（反转）。
-# 换轴已在自定义组件内完成（基类 transform 的 swap_xy 在 2026.10.2 运行时不生效），
-# 这里 calibration 保持 1:1（0..480 / 0..320），mirror_y 负责纵向反转。
-# 若点哪画哪仍对不上，按 docs/触摸-ST77922.md 的校准表调 mirror_x / mirror_y。
+# 坐标映射（tab6~9 四角复验）：芯片原生坐标是竖屏 320x480，
+# 显示横向 = 原生纵向（不反转）、显示纵向 = 320 - 原生横向（反转）。
+# ⚠️ 换轴和纵向反转都已在自定义组件内完成（基类 transform.swap_xy 在 2026.10.2 不生效），
+# 所以这里 calibration 1:1 且 mirror 全关——mirror_y 再开一次会"反两次"（已踩坑，tab6~9）。
+# 若换壳改了安装方向，优先改组件内的映射，或只在这里加 mirror。
 globals:
   - id: tap_count
     type: unsigned
@@ -334,7 +334,7 @@ touchscreen:
     transform:
       swap_xy: false
       mirror_x: false
-      mirror_y: true
+      mirror_y: false
     on_touch:
       - lambda: |-
           id(tap_count) += 1;
