@@ -75,6 +75,8 @@ display:
     bus_mode: quad
     cs_pin: GPIO10
     dimensions: 320x480
+    rotation: 90°             # 壳内横装：画布变 480x320（若内容上下颠倒，改成 270°）
+    transform: disabled       # ST77922 不支持硬件行列交换，禁用硬件变换、强制软件旋转
     data_rate: 40MHz
     draw_rounding: 4          # ST77922 要求 x 坐标 4 像素对齐，否则花屏
     color_order: rgb          # 面板实际顺序 RGB（官方示例：RGB order + inversion on）
@@ -137,29 +139,30 @@ display:
       - [0x11]              # SLPOUT
       - delay 120ms         # 面板唤醒后必须等 120ms
     lambda: |-
-      const int W = 320, H = 480;
+      // rotation: 90 后画布为横屏 480x320
+      const int W = 480, H = 320;
       it.fill(Color(0, 0, 0));
 
-      // 四条主色带：红 / 绿 / 蓝 / 白（判断颜色顺序与反色是否正常）
-      it.filled_rectangle(0,   0, W, 60, Color(255, 0, 0));
-      it.filled_rectangle(0,  60, W, 60, Color(0, 255, 0));
-      it.filled_rectangle(0, 120, W, 60, Color(0, 0, 255));
-      it.filled_rectangle(0, 180, W, 60, Color(255, 255, 255));
+      // 四条主色带（竖条从左到右）：红 / 绿 / 蓝 / 白（判断颜色顺序与反色是否正常）
+      it.filled_rectangle(0,   0, 120, H, Color(255, 0, 0));
+      it.filled_rectangle(120, 0, 120, H, Color(0, 255, 0));
+      it.filled_rectangle(240, 0, 120, H, Color(0, 0, 255));
+      it.filled_rectangle(360, 0, 120, H, Color(255, 255, 255));
 
-      // 网格：每 40px 一条灰线（判断 4 像素对齐有无花屏、有无列错位）
-      for (int y = 240; y < H; y += 40)
+      // 右半区网格：每 40px 一条灰线（判断 4 像素对齐有无花屏、有无列错位）
+      for (int y = 0; y < H; y += 40)
         it.line(0, y, W - 1, y, Color(60, 60, 60));
       for (int x = 0; x < W; x += 40)
-        it.line(x, 240, x, H - 1, Color(60, 60, 60));
+        it.line(x, 0, x, H - 1, Color(60, 60, 60));
 
-      // 方向标记：左上角短边 + 右上角短边，方向正了才对
+      // 方向标记：左上黄角 + 右上青角（方向正了才对）
       it.filled_rectangle(0, 0, 8, 120, Color(255, 255, 0));
       it.filled_rectangle(0, 0, 120, 8, Color(255, 255, 0));
       it.filled_rectangle(W - 8, 0, 8, 120, Color(0, 255, 255));
       it.filled_rectangle(W - 120, 0, 120, 8, Color(0, 255, 255));
 
-      // 文字：确认字库、方向、分辨率
-      it.print(16, 260, id(f24), Color(255, 255, 255), "Pocket HA");
-      it.print(16, 296, id(f24), Color(255, 255, 255), "ST77922 QSPI");
-      it.print(16, 332, id(f24), Color(255, 255, 255), "320x480");
-      it.print(16, 368, id(f24), Color(255, 255, 255), "X:319 Y:479");
+      // 文字：确认横屏方向与字库
+      it.printf(16,  20, id(f24), Color(255, 255, 0),   "Pocket HA");
+      it.printf(16,  56, id(f24), Color(255, 255, 255), "ST77922 QSPI");
+      it.printf(16,  92, id(f24), Color(255, 255, 255), "480x320");
+      it.printf(16, 128, id(f24), Color(0, 255, 255),   "X:479 Y:319");
