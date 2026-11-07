@@ -2,8 +2,9 @@
 # Pocket HomeAssistant — 阶段二：整机基础能力
 #
 # 已启用：WiFi / API / OTA、背光调光、RGB 状态灯、电池电量(ADC)、BOOT 按键、
-#         BLE 蓝牙代理、I2C 总线（供扩展口接传感器）、状态信息页
+#         I2C 总线（供扩展口接传感器）、状态信息页
 # 未启用：MQTT 数据帧、三页 UI、触摸、音频、TF 卡（见 docs 里的路线图）
+# 已关闭：BLE 蓝牙代理（用户 2026-11-07 决定不要，避免与 WiFi 抢射频）
 #
 # 需要在 secrets.yaml 里补 4 项：
 #   wifi_ssid / wifi_password / ap_password / api_key   （api_key 用 HA 里 ESPHome 向导生成的即可）
@@ -54,15 +55,15 @@ api:
 ota:
   - platform: esphome
 
-# ── 蓝牙：把这块屏变成 HA 的 BLE 覆盖点 ──────────────────────────────
-esp32_ble_tracker:
-  scan_parameters:
-    interval: 1100ms
-    window: 1100ms
-    active: true
-
-bluetooth_proxy:
-  active: true
+# ── 蓝牙：已关闭（2026-11-07 用户决定不做 BLE 代理，避免与 WiFi 争夺 2.4G 射频）
+# 如需恢复，取消下面注释即可；务必保持 window < interval，否则 WiFi 会被饿死。
+# esp32_ble_tracker:
+#   scan_parameters:
+#     interval: 320ms
+#     window: 300ms
+#     active: true
+# bluetooth_proxy:
+#   active: true
 
 # ── 时间（来自 HA）────────────────────────────────────────────────
 time:
@@ -96,7 +97,7 @@ light:
     pin: GPIO40
     chipset: ws2812
     num_leds: 1
-    rgb_order: GRB
+    channel_colors: GRB   # WS2812 实际顺序 GRB（rgb_order 是同义旧名，已废弃）
     restore_mode: ALWAYS_OFF
 
 # ── 电池：R14/R15 100K 分压进 IO8（ADC1_CH7），读数 ×2 还原电池电压 ──
