@@ -34,12 +34,13 @@ void ST77922Touchscreen::setup() {
     this->interrupt_pin_->setup();
   }
 
-  // 触摸原始坐标范围默认取面板原生分辨率；可在 YAML 用 calibration 覆盖
+  // 触摸原始坐标范围：组件内已完成换轴，上报的是"横装"坐标（480x320）。
+  // YAML 里的 calibration 与此一致；这里只作未写 calibration 时的兜底。
   if (this->x_raw_max_ == this->x_raw_min_) {
-    this->x_raw_max_ = this->display_ != nullptr ? this->display_->get_native_width() : 320;
+    this->x_raw_max_ = 480;
   }
   if (this->y_raw_max_ == this->y_raw_min_) {
-    this->y_raw_max_ = this->display_ != nullptr ? this->display_->get_native_height() : 480;
+    this->y_raw_max_ = 320;
   }
 
   // 探活：读状态寄存器，读得到说明触摸那一半活着
@@ -104,15 +105,26 @@ void ST77922Touchscreen::update_touches() {
     if ((buf[i] & POINT_VALID_MASK) == 0)
       continue;
 
-    int16_t x = ((buf[i] & POINT_XY_MASK) << 8) | buf[i + 1];
-    int16_t y = ((buf[i + 2] & POINT_XY_MASK) << 8) | buf[i + 3];
+    // 芯片原生坐标：tx ∈ [0,320) 竖屏横向、ty ∈ [0,480) 竖屏纵向
+    int16_t tx = ((buf[i] & POINT_XY_MASK) << 8) | buf[i + 1];
+    int16_t ty = ((buf[i + 2] & POINT_XY_MASK) << 8) | buf[i + 3];
 
-    // 上电瞬间可能读到 0,0，忽略，避免误判成左上角点击
-    if (x == 0 && y == 0)
+    // 上电瞬间可能读到 0,0，忽略，避免误判成角点点击
+    if (tx == 0 && ty == 0)
       continue;
 
-    ESP_LOGV(TAG, "Touch raw (%d, %d) pressure=%u", x, y, buf[i + 4]);
-    this->add_raw_touch_position_(0, x, y, buf[i + 4]);
+    // ── 板级安装映射（实测 2026-11-07，tab1/2/4 三角标定）──
+    // 屏幕横装（显示 480x320），而触摸原始坐标是竖屏 320x480：
+    //   显示横向 = 原生纵向：px = ty（0..480，不反转）
+    //   显示纵向 = 原生横向：py = 320 - tx（反转）
+    // 在组件内完成换轴，不依赖基类 transform（实测 2026.10.2 的 swap_xy 运行时不生效）。
+    // 剩余的镜像修正交给 YAML 的 mirror_x / mirror_y。
+    int16_t px = ty;
+    int16_t py = 320 - tx;
+
+    ESP_LOGV(TAG, "Touch native (%d, %d) -> mounted (%d, %d) pressure=%u", tx, ty, px, py,
+             buf[i + 4]);
+    this->add_raw_touch_position_(0, px, py, buf[i + 4]);
     return;
   }
 

@@ -302,10 +302,11 @@ external_components:
     components: [st77922_touch]
 
 # 这颗芯片是触显一体：显示和触摸在同一颗 die，触摸走独立 I2C 地址 0x55。
-# 坐标标定（实测 2026-11-07）：点屏幕正中 → raw 248,142，即原始坐标系本身就是
-# 480x320 横屏（列 0~479 / 行 0~319），与屏幕显示方向一致，所以不做轴交换，
-# 只用 calibration 把原始范围标成 480x320，使映射为 1:1。
-# 若日后发现"点哪里、红点不在手指下"，按 docs/触摸-ST77922.md 的校准表调 mirror_x / mirror_y。
+# 坐标映射（tab1/2/4 三角实测标定）：芯片原生坐标是竖屏 320x480，
+# 屏幕横装后：显示横向 = 原生纵向（不反转）、显示纵向 = 320 - 原生横向（反转）。
+# 换轴已在自定义组件内完成（基类 transform 的 swap_xy 在 2026.10.2 运行时不生效），
+# 这里 calibration 保持 1:1（0..480 / 0..320），mirror_y 负责纵向反转。
+# 若点哪画哪仍对不上，按 docs/触摸-ST77922.md 的校准表调 mirror_x / mirror_y。
 globals:
   - id: tap_count
     type: unsigned
@@ -326,7 +327,7 @@ touchscreen:
     transform:
       swap_xy: false
       mirror_x: false
-      mirror_y: false
+      mirror_y: true
     on_touch:
       - lambda: |-
           id(tap_count) += 1;
