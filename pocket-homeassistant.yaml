@@ -1624,7 +1624,8 @@ switch:
   - platform: gpio
     id: pa_en
     name: "Speaker PA"
-    internal: true
+    icon: mdi:volume-high
+    entity_category: diagnostic       # 调试期暴露给 HA，方便手动开关功放排查
     pin:
       number: GPIO1
       inverted: true
