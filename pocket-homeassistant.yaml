@@ -620,7 +620,7 @@ time:
 lvgl:
   displays: [lcd_display]
   touchscreens: [touch_panel]
-  rotation: 90                      # 横装 480x320：LVGL 旋转渲染与触摸输入（若颠倒改 270）
+  rotation: 270                     # 横装 480x320：LVGL 旋转渲染与触摸输入（180° 翻转版，配合左手握持）
   buffer_size: "25%"
   draw_rounding: 4   # ST77922 x 坐标 4 像素对齐
   resume_on_input: false
@@ -710,6 +710,47 @@ interval:
           last_unread = u;
           if (u > 0) lv_obj_clear_flag(id(notify_badge), LV_OBJ_FLAG_HIDDEN);
           else       lv_obj_add_flag(id(notify_badge), LV_OBJ_FLAG_HIDDEN);
+
+  # ----------------------------------------------------------
+  # 供电状态推断（硬件无 VBUS/CHRG 检测脚，只能靠电压行为判断）
+  #   0=未知 1=电池供电 2=充电中 3=外接电源·已充满
+  #   规则：
+  #     ① 相邻样本跃升 >20mV → 刚插上电源（充电电流拉高电压）
+  #     ② 相邻样本掉压 >30mV → 刚拔掉电源（负载导致回落）
+  #     ③ 3 分钟趋势上升 → 充电中；下降 → 电池放电
+  #     ④ 3 分钟平台：≥4.17V 判外接满电；<4.12V 判电池
+  #   局限：满电拔掉电源后电压仍在 4.15V 以上，会短暂显示"已充满"，
+  #         约 3~5 分钟电压回落后自动纠正为电池。
+  # ----------------------------------------------------------
+  - interval: 30s
+    then:
+      - lambda: |-
+          const float v = id(bat_volt).state;
+          if (!std::isfinite(v) || v < 2.0f) return;
+          const uint32_t now = millis();
+          // ①② 相邻样本突变 → 立即改判
+          const float pv = id(pwr_prev_v);
+          if (pv > 2.0f) {
+            const float d = v - pv;
+            if (d > 0.02f)       id(power_state) = 2;
+            else if (d < -0.03f) id(power_state) = 1;
+          }
+          id(pwr_prev_v) = v;
+          if (id(pwr_ref_ms) == 0) {
+            id(pwr_ref_ms) = now;
+            id(pwr_ref_v) = v;
+            return;
+          }
+          // ③④ 3 分钟趋势
+          if (now - id(pwr_ref_ms) < 180000UL) return;
+          const float dv = v - id(pwr_ref_v);
+          if (dv > 0.01f)        id(power_state) = 2;   // 缓升 → 充电
+          else if (dv < -0.015f) id(power_state) = 1;   // 缓降 → 放电
+          else if (v >= 4.17f)   id(power_state) = 3;   // 高位平台 → 外接满电
+          else if (v < 4.12f)    id(power_state) = 1;   // 中低位平台 → 电池
+          id(pwr_ref_v) = v;
+          id(pwr_ref_ms) = now;
+          ESP_LOGD("power", "bat %.2fV st=%d dv=%.3f", v, id(power_state), dv);
 
 debug:
   id: dbg_comp
@@ -973,6 +1014,24 @@ globals:
     type: uint32_t
     restore_value: false
     initial_value: "15000"
+
+  # ---- 供电状态推断（见下方 30s interval；硬件无 VBUS/CHRG 检测脚）----
+  - id: power_state        # 0=未知 1=电池 2=充电中 3=外接·已充满
+    type: int8_t
+    restore_value: false
+    initial_value: '0'
+  - id: pwr_prev_v         # 上一次 30s 样本电压（判断突变）
+    type: float
+    restore_value: false
+    initial_value: '0'
+  - id: pwr_ref_v          # 3 分钟趋势参考点电压
+    type: float
+    restore_value: false
+    initial_value: '0'
+  - id: pwr_ref_ms         # 参考点时刻
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
 
 # ==========================================================
 # 本机传感器（与 HA 无关，始终可用）
