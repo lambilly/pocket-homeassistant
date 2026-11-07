@@ -229,6 +229,7 @@ font:
       - "\U000F0595"   # mdi:weather-partly-cloudy 天气
       - "\U000F0770"   # mdi:home-lightbulb-outline 其他/传感器
       - "\U000F0241"   # mdi:flash 用电（闪电）
+      - "\U000F0079"   # mdi:battery 电池（标题栏电量 / 系统页电压行）
       - "\U000F0238"   # mdi:fire 用气（火焰）
       - "\U000F0D3E"   # mdi:transmission-tower 电压（输电塔）
       - "\U000F0875"   # mdi:gauge-low 水压（低压表盘）
