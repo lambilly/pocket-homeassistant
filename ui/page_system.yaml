@@ -49,50 +49,78 @@ lvgl:
                   text: "系统状态"
                   text_font: ui_font_medium
                   text_color: 0xFFFFFF
-              # 电池组（标题栏中部空位）：图标两态叠放，按 power_state 显隐
+              # ===== 标题栏三段式：左「系统状态」| 中「运行时长」| 右「电池」 =====
+              #   中间/右侧各用一个 flex 容器（宽度 SIZE_CONTENT 自适应）：
+              #   文字长度变化（7分钟 / 1小时5分 / 1天2小时）时自动重新居中、
+              #   自动右对齐，不会出现图标和文字错位。
+              # 中间：运行组（图标 + 运行时长）
+              - obj:
+                  align: center
+                  width: SIZE_CONTENT
+                  height: SIZE_CONTENT
+                  pad_all: 0
+                  bg_opa: 0%
+                  border_width: 0
+                  outline_width: 0
+                  scrollable: false
+                  layout:
+                    type: flex
+                    flex_flow: row
+                    flex_align_main: center
+                    flex_align_cross: center
+                    pad_column: 4
+                  widgets:
+                    - label:
+                        text: "\U000F051F"
+                        text_font: mdi_icons_20
+                        height: 18
+                        text_color: 0x59D98B
+                    - label:
+                        id: sys_uptime_top_label
+                        text: "运行: #757575 --#"
+                        text_font: ui_font_medium
+                        text_color: 0xFFFFFF
+                        recolor: true
+              # 右侧：电池组（电量百分比 + 电压），图标两态叠放按 power_state 显隐
               #   sys_batt_icon    = mdi:battery（电池供电，颜色随电量）
               #   sys_batt_icon_chg= mdi:flash（充电中/外接，橙色/绿色）
-              - label:
-                  id: sys_batt_icon
-                  align: left_mid
-                  x: 155
-                  text: "\U000F0079"
-                  text_font: mdi_icons_20
-                  height: 18
-                  text_color: 0x59D98B
-              - label:
-                  id: sys_batt_icon_chg
-                  align: left_mid
-                  x: 155
-                  text: "\U000F0241"
-                  text_font: mdi_icons_20
-                  height: 18
-                  text_color: 0xFFB74D
-                  hidden: true
-              - label:
-                  id: sys_batt_label
-                  align: left_mid
-                  x: 179
-                  text: "#757575 --#"
-                  text_font: ui_font_small
-                  text_color: 0xFFFFFF
-                  recolor: true
-              # 运行组（图标 + 文字）整体右移 15px：图标 x277→292、文字 x299→314
-              - label:
-                  align: left_mid
-                  x: 292
-                  text: "\U000F051F"
-                  text_font: mdi_icons_20
-                  height: 18
-                  text_color: 0x59D98B
-              - label:
-                  id: sys_uptime_top_label
-                  align: left_mid
-                  x: 314
-                  text: "运行: #757575 --#"
-                  text_font: ui_font_medium
-                  text_color: 0xFFFFFF
-                  recolor: true
+              #   注意：flex 会跳过 hidden 的子对象，所以两个图标可叠放同一位置
+              - obj:
+                  align: right_mid
+                  x: -8
+                  width: SIZE_CONTENT
+                  height: SIZE_CONTENT
+                  pad_all: 0
+                  bg_opa: 0%
+                  border_width: 0
+                  outline_width: 0
+                  scrollable: false
+                  layout:
+                    type: flex
+                    flex_flow: row
+                    flex_align_main: center
+                    flex_align_cross: center
+                    pad_column: 4
+                  widgets:
+                    - label:
+                        id: sys_batt_icon
+                        text: "\U000F0079"
+                        text_font: mdi_icons_20
+                        height: 18
+                        text_color: 0x59D98B
+                    - label:
+                        id: sys_batt_icon_chg
+                        text: "\U000F0241"
+                        text_font: mdi_icons_20
+                        height: 18
+                        text_color: 0xFFB74D
+                        hidden: true
+                    - label:
+                        id: sys_batt_label
+                        text: "#757575 --#"
+                        text_font: ui_font_medium
+                        text_color: 0xFFFFFF
+                        recolor: true
               # 注：行 1 中间的「时钟 + HH:MM」已于第十七轮搬到通知页顶栏
               #   （用户要求「把系统页那个时间移到通知页第一行中间」）。
               #   这里不再保留任何时钟元素，本页行 1 只剩「系统状态」和「运行」。
