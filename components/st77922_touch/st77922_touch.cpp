@@ -34,13 +34,14 @@ void ST77922Touchscreen::setup() {
     this->interrupt_pin_->setup();
   }
 
-  // 触摸原始坐标范围：组件内已完成换轴，上报的是"横装"坐标（480x320）。
+  // 触摸原始坐标范围：上报芯片原生竖屏坐标（320x480），与显示层原生方向一致；
+  // 横装旋转交给 LVGL rotation（LVGL 会同时旋转渲染与触摸输入）。
   // YAML 里的 calibration 与此一致；这里只作未写 calibration 时的兜底。
   if (this->x_raw_max_ == this->x_raw_min_) {
-    this->x_raw_max_ = 480;
+    this->x_raw_max_ = 320;
   }
   if (this->y_raw_max_ == this->y_raw_min_) {
-    this->y_raw_max_ = 320;
+    this->y_raw_max_ = 480;
   }
 
   // 探活：读状态寄存器，读得到说明触摸那一半活着
@@ -113,18 +114,12 @@ void ST77922Touchscreen::update_touches() {
     if (tx == 0 && ty == 0)
       continue;
 
-    // ── 板级安装映射（实测 2026-11-07，tab1/2/4 三角标定）──
-    // 屏幕横装（显示 480x320），而触摸原始坐标是竖屏 320x480：
-    //   显示横向 = 原生纵向：px = ty（0..480，不反转）
-    //   显示纵向 = 原生横向：py = 320 - tx（反转）
-    // 在组件内完成换轴，不依赖基类 transform（实测 2026.10.2 的 swap_xy 运行时不生效）。
-    // 剩余的镜像修正交给 YAML 的 mirror_x / mirror_y。
-    int16_t px = ty;
-    int16_t py = 320 - tx;
-
-    ESP_LOGV(TAG, "Touch native (%d, %d) -> mounted (%d, %d) pressure=%u", tx, ty, px, py,
-             buf[i + 4]);
-    this->add_raw_touch_position_(0, px, py, buf[i + 4]);
+    // 上报芯片原生坐标（竖屏 320x480），不做任何板级换轴——
+    // 旋转由 LVGL rotation 统一处理（渲染与触摸输入同步旋转）。
+    // ⚠️ 之前版本在这里做过 px=ty / py=320-tx 的换轴（裸显示层时代），
+    // 接入 LVGL 后显示原生方向就是竖屏，换轴必须撤销，否则方向全错。
+    ESP_LOGV(TAG, "Touch native (%d, %d) pressure=%u", tx, ty, buf[i + 4]);
+    this->add_raw_touch_position_(0, tx, ty, buf[i + 4]);
     return;
   }
 
