@@ -81,7 +81,7 @@ lvgl:
                         text_font: ui_font_medium
                         text_color: 0xFFFFFF
                         recolor: true
-              # 右侧：电池组（电量百分比 + 电压），图标两态叠放按 power_state 显隐
+              # 右侧：电池组（只显示电量百分比；电压已移到「设备信息」第4行）
               #   sys_batt_icon    = mdi:battery（电池供电，颜色随电量）
               #   sys_batt_icon_chg= mdi:flash（充电中/外接，橙色/绿色）
               #   注意：flex 会跳过 hidden 的子对象，所以两个图标可叠放同一位置
@@ -268,21 +268,23 @@ lvgl:
                   text: "屏幕: 480x320"
                   text_font: ui_font_small
                   text_color: 0xFFFFFF
-              # 第4行：固件
+              # 第4行：电池电压（原「固件」行；图标换成电压图标 mdi:transmission-tower）
               - label:
                   align: left_mid
                   x: 6
                   y: 52
-                  text: "\U000F059F"
+                  text: "\U000F0D3E"
                   text_font: mdi_icons
-                  text_color: 0x5AA9FF
+                  text_color: 0xFFB74D
               - label:
+                  id: sys_volt_label
                   align: left_mid
                   x: 25
                   y: 52
-                  text: "固件: ESPHome"
+                  text: "电压: #757575 --#"
                   text_font: ui_font_small
                   text_color: 0xFFFFFF
+                  recolor: true
 
         # ---- 中列：系统负载（白色标题）----
         - obj:
@@ -526,15 +528,19 @@ interval:
             lv_obj_set_style_text_color(id(sys_uptime_top_label), lv_color_hex(0xFFFFFF), 0);
           }
 
-          // ===== 行1：电池（电量 + 电压 + 供电状态图标）=====
+          // ===== 行1：电池（标题栏只显示电量百分比；电压在「设备信息」第4行）=====
           {
             float v = id(bat_volt).state;
             float p = id(bat_pct).state;
             if (std::isfinite(v) && std::isfinite(p)) {
               int pct = (int) (p + 0.5f);
-              snprintf(buf, sizeof(buf), "%d%%  %.2fV", pct, v);
+              snprintf(buf, sizeof(buf), "%d%%", pct);
               lv_label_set_text(id(sys_batt_label), buf);
               lv_obj_set_style_text_color(id(sys_batt_label), lv_color_hex(0xFFFFFF), 0);
+              // 电压：填到设备信息第4行
+              snprintf(buf, sizeof(buf), "电压: %.2fV", v);
+              lv_label_set_text(id(sys_volt_label), buf);
+              lv_obj_set_style_text_color(id(sys_volt_label), lv_color_hex(0xFFFFFF), 0);
               // 状态：0 未知 / 1 电池 / 2 充电中 / 3 外接已满
               const int st = id(power_state);
               if (st == 2 || st == 3) {
@@ -551,6 +557,7 @@ interval:
               }
             } else {
               lv_label_set_text(id(sys_batt_label), "#757575 --#");
+              lv_label_set_text(id(sys_volt_label), "电压: #757575 --#");
             }
           }
 
