@@ -496,8 +496,12 @@ display:
     bus_mode: quad
     cs_pin: GPIO10
     dimensions: 320x480
-    # ⚠️ 接入 LVGL 后旋转必须写在 lvgl: rotation（LVGL 不兼容显示层 rotation），
-    # 显示层保持原生竖屏 320x480，横装 480x320 由 LVGL 统一旋转（渲染+触摸）。
+    # ⚠️ 必须显式写 disabled！不写时默认为"启用"，CUSTOM 模型会被认为支持硬件变换，
+    # LVGL 于是走硬件旋转路径（仅写 MADCTL 的 MV 行列交换位）——但 ST77922 不支持 MV，
+    # 结果面板不动、LVGL 按 480 宽写入 320 宽面板 → 画面斜向剪切错位（2026-11-07 实测）。
+    # 写 disabled 后 LVGL 改走软件旋转（逐像素重排），横屏正确。
+    # 显示层保持原生竖屏 320x480，横装 480x320 由 LVGL rotation 90 统一旋转（渲染+触摸）。
+    transform: disabled
     data_rate: 40MHz
     draw_rounding: 4         # ST77922 要求 x 坐标 4 像素对齐，否则花屏
     color_order: rgb
