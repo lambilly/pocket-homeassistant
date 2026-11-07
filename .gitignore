@@ -24,3 +24,5 @@ ui/
 
 # 外壳 3D 模型：等打印件回货验证可用后再入库
 case/
+# ESPHome 构建产物
+test/.esphome/
