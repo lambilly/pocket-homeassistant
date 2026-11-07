@@ -281,3 +281,36 @@ display:
 
       // 底部提示
       it.print(16, 200, id(f22), Color(0x75, 0x75, 0x75), "BOOT: backlight on/off");
+
+      // ── 触摸调试区：点屏幕任意位置，这里显示原始坐标和映射后坐标 ──
+      auto t = id(ts).get_touch();
+      if (t.has_value()) {
+        it.filled_circle(t->x, t->y, 8, Color(0xFF, 0x52, 0x52));
+        it.printf(16, 240, id(f22), Color(0xFF, 0xE0, 0x82), "raw %d,%d", t->x_raw, t->y_raw);
+        it.printf(16, 276, id(f22), Color(0x8B, 0xC3, 0x4A), "map %d,%d", t->x, t->y);
+      } else {
+        it.print(16, 240, id(f22), Color(0x75, 0x75, 0x75), "tap screen to test");
+      }
+
+# ── 触摸：ST77922 内置 TDDI 触摸（本仓库自定义组件 components/st77922_touch）──
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [st77922_touch]
+
+# 这颗芯片是触显一体：显示和触摸在同一颗 die，触摸走独立 I2C 地址 0x55。
+# 坐标是面板原生 320x480 竖屏，而屏幕 rotation 90° 装成横屏 480x320，
+# 所以要用 transform 做轴交换；方向不对就调 mirror_x / mirror_y（见 docs）。
+touchscreen:
+  - platform: st77922_touch
+    id: ts
+    display: lcd
+    reset_pin: GPIO48
+    update_interval: 50ms
+    transform:
+      swap_xy: true
+    on_touch:
+      - lambda: |-
+          ESP_LOGD("touch", "screen=(%d,%d) raw=(%d,%d) z=%d", touch.x, touch.y, touch.x_raw, touch.y_raw,
+                   touch.z_raw);
