@@ -73,7 +73,7 @@ lvgl:
                     - label:
                         text: "\U000F051F"
                         text_font: mdi_icons_20
-                        height: 18
+                        height: 22
                         text_color: 0x59D98B
                     - label:
                         id: sys_uptime_top_label
@@ -106,13 +106,13 @@ lvgl:
                         id: sys_batt_icon
                         text: "\U000F0079"
                         text_font: mdi_icons_20
-                        height: 18
+                        height: 22
                         text_color: 0x59D98B
                     - label:
                         id: sys_batt_icon_chg
                         text: "\U000F0241"
                         text_font: mdi_icons_20
-                        height: 18
+                        height: 22
                         text_color: 0xFFB74D
                         hidden: true
                     - label:
@@ -268,12 +268,12 @@ lvgl:
                   text: "屏幕: 480x320"
                   text_font: ui_font_small
                   text_color: 0xFFFFFF
-              # 第4行：电池电压（原「固件」行；图标换成电压图标 mdi:transmission-tower）
+              # 第4行：电池电压（原「固件」行；图标用电池图标，与电量图标同款）
               - label:
                   align: left_mid
                   x: 6
                   y: 52
-                  text: "\U000F0D3E"
+                  text: "\U000F0079"
                   text_font: mdi_icons
                   text_color: 0xFFB74D
               - label:
