@@ -1,8 +1,30 @@
 # 更新日志（CHANGELOG）
 
-> **版本线说明**：本仓库自 **Pocket HomeAssistant v3.0** 起独立记账，只记录 ES3C35P 硬件平台。
-> `HA Monitor Display v1.x / v2.x`（API 线、MQTT 线、Notify 线，对应旧板 SPI 屏）的完整历史
-> 见旧仓库 `D:\HA Monitor Display\CHANGELOG.md`，本文不再重复。
+> **版本线说明**：本仓库自 **v3.0** 起按 ES3C35P 硬件平台独立记账，早期 SPI 屏版本不在本仓库范围内。
+
+## [v3.4] — 2026-11-08（音频单管线 · 语音入口 · 灯语重做）
+
+- **修复「播过 TTS 就放不了音乐，反之亦然」**：拆掉 `speaker: platform: mixer` 双管线，改**单管线**
+  （`media_player` 只写 `announcement_pipeline` → `spk_out`，`format: NONE` 全解码器）。
+  根因：mixer 首次启动后把音频流参数锁死在第一路，第二路采样率不符即 `Incompatible audio streams`；
+  且两条管线状态机互相卡。代价：TTS 会打断正在放的音乐
+- **音量上限**：`volume_max: 75%`（板载小喇叭超过绝对 75% 破音），`volume_initial: 0.8`
+  （滑块 60% ↔ 绝对 45%，改 0.8 后默认响度回到绝对 60%）
+- **语音入口补齐**：新增 `button.start_conversation` / `button.stop_conversation`；
+  `binary_sensor.btn_boot` 由 `on_press` 改 `on_multi_click`——**长按 ≥0.8 s 开始/结束对话**
+  （熄屏时先唤醒再起麦），**短按 <0.6 s 仍是熄屏/唤醒**
+- **语音三态配色重做**：原「青 → 蓝 → 绿」色相挤在色轮同一段，单灯珠下分不清。改为
+  **聆听 品红 `255,0,184` 快呼吸 / 思考 黄 `255,209,0` 中呼吸 / 说话 绿 `0,224,89` 慢呼吸**，
+  色相 315°/50°/145° 两两间隔 ≥95°，叠加节奏形成双重区分；红留给故障/低电，橙留给充电
+- **两个调试开关转内部**：`switch.pa_en`、`switch.mic_monitor` 加 `internal: true`，
+  不再暴露给 HA（`mic_monitor` 保留 `restore_mode: ALWAYS_OFF`）
+- **`mic_take` 增加前置守卫**：喇叭未停就不 capture，消除「播放时麦克风每秒刷
+  `Driver failed to start`」的日志风暴（`on_idle` 会再叫一次，业务不受影响）
+- **移除状态机的 `set_transition_length(0)`**：调用本身就会置 transition 标志，与 effect 冲突，
+  每次切灯态刷 `effect cannot be used with transition/flash` 警告
+- **删除 `components/i2c/` 本地补丁**：此前怀疑官方 i2c 的 `recover_()` 调 `App.feed_wdt()`
+  导致黑屏，串口埋点证实无关（真因是上一条的 `restore_mode`）。回归官方组件，减少仓库体积
+- 文档：README 状态灯表补色值列与配色理由；音频章节改为单管线；目录结构与文档索引同步
 
 ## [v3.3] — 2026-11-08（状态灯：WS2812 一灯多态）
 
@@ -67,19 +89,18 @@
 
 **应用层**
 
-- LVGL 四页 UI（家居 / 网络 / 系统 / 通知）+ 底部四键 TAB，从旧项目搬入并改横装
+- LVGL 四页 UI（家居 / 网络 / 系统 / 通知）+ 底部四键 TAB，沿用既有页面设计并改横装
 - 屏 180° 翻转（`lvgl: rotation: 270`，左手持机不挡屏）；系统页标题栏三段式
   （运行时长居中、电量右对齐），电压移入「设备信息」并按供电状态换图标。
   提交 `eab04c7`、`8f27374`、`d844a21`、`3498d1d`
 - 供电状态推断：无 VBUS/CHRG 检测脚，用 30 s 采样电压的跃变与 3 分钟趋势判
   「电池 / 充电中 / 外接满电」。提交 `eab04c7`
-- MQTT 数据 / 通知 / 远程控制三通道；包 id 统一 `pkha_` 前缀，避免与旧屏
-  `monitor_display_*` 同名导致静默失效
-- **修复 MQTT 不推送**：`pocket_display_push.yaml` 的 automation id 仍是 `monitor_display_push`，
-  与旧屏包同名冲突 → 改 `pkha_display_push`。提交 `0780142`
+- MQTT 数据 / 通知 / 远程控制三通道；HA 包 id 统一 `pkha_` 前缀，避免与 HA 中其它包的 id
+  同名导致静默失效
+- **修复 MQTT 不推送**：`pocket_display_push.yaml` 的 automation id 与 HA 中另一个包同名冲突
+  → 统一改 `pkha_display_push`。提交 `0780142`
 - **修复电池图标显示为方框**：`\U000F0079`（mdi:battery）误加到中文通知字体块，
   补进 `&mdi_glyphs`。提交 `1c6764e`
-- 目录清理：移除旧项目遗留副本（`ha-monitor-display.yaml`、迁移脚本、reference 案例/硬件照片）、
-  官方例程包、调试照片与测试构建缓存；移除旧项目三份文档（提交 `e9cf63b`、`f7b0bf7`）；
-  本次再删 `ha/monitor_display_*.yaml`、旧版 Lovelace 卡片与旧版 Node-RED 子流程
+- 目录清理：移除迁移前的旧配置副本、迁移脚本、参考案例与硬件照片、官方例程包、
+  调试照片与测试构建缓存（提交 `e9cf63b`、`f7b0bf7`）；本次再删旧版 Lovelace 卡片与旧版 Node-RED 子流程
 - README 按现状全量重写（硬件表 / 引脚表 / MQTT 主题表 / 目录结构 / 踩坑清单）。提交 `3178bf2`

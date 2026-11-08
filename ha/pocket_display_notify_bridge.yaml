@@ -1,7 +1,7 @@
 # ==========================================================
 # Pocket HomeAssistant —— 通知桥接（HA 页 ↔ 屏幕通知页）
 # ----------------------------------------------------------
-# 安装位置：/config/packages/monitor_display_notify_bridge.yaml
+# 安装位置：/config/packages/pocket_display_notify_bridge.yaml
 #   （configuration.yaml 已有 packages: !include_dir_named packages）
 # 生效：开发者工具 → YAML → 「重新加载 所有 YAML 配置」
 #   （新增实体需要一次 HA 重启才会出现；此包不改动原首页）

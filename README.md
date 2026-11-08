@@ -1,8 +1,6 @@
 # Pocket HomeAssistant
 
-口袋式 Home Assistant 信息屏。硬件换成 **LCDWIKI ES3C35P**（ESP32-S3 N16R8 + 3.5" 320×480 QSPI 触摸屏，板载喇叭/麦克风/TF 卡/电池座），软件是 **ESPHome + LVGL**：四页数据看板、触摸 TAB 导航、熄屏省电、HA 语音播报。
-
-本项目由 **HA Monitor Display v2.2.1** 迁移而来（发布为 **v3.0**）：UI 布局、MQTT 数据通道、熄屏逻辑全部沿用，显示驱动 / 触摸驱动 / 音频链路按新硬件重写。
+口袋式 Home Assistant 信息屏。硬件为 **LCDWIKI ES3C35P**（ESP32-S3 N16R8 + 3.5" 320×480 QSPI 触摸屏，板载喇叭/麦克风/TF 卡/电池座），软件是 **ESPHome + LVGL**：四页数据看板、触摸 TAB 导航、熄屏省电、HA 语音播报与语音助手。
 
 ## 功能一览
 
@@ -14,9 +12,9 @@
 - **熄屏休眠**：超时 15~900 s 可调，触摸 / BOOT 键唤醒；收到通知可配置为自动亮屏并直跳通知页
 - **亮度与配色**：背光 PWM 0~100% 可调、断电记忆；每页底色 8 档可选（HA 下拉切换，无需重启）
 - **电池状态**：IO8 ADC 采样电压 → 电量百分比；标题栏按供电状态切换图标（电池 / 闪电），供电/充电状态由电压趋势推断
-- **语音播报 + 语音助手**：HA 里出现 `media_player.pocket_speaker`，TTS / 提示音直接推到板载喇叭；`voice_assistant` 接 HA Assist（STT/意图/TTS 全在 HA 侧），板载麦克风采集。功放自动开关（播放前使能，结束后延迟 150 ms 关闭）
+- **语音播报 + 语音助手**：HA 里出现 `media_player.pocket_speaker`，TTS / 提示音直接推到板载喇叭；`voice_assistant` 接 HA Assist（STT/意图/TTS 全在 HA 侧），板载麦克风采集。触发方式：HA 的 **Start Conversation** 按钮 / **BOOT 长按 ≥0.8 s**。功放由巡检自动开关（驱动 RUNNING 后 80 ms 才使能，避开起播「嘎」声）
 - **远程控制**：屏幕带出门（HA 连不到设备）时，仍可通过 MQTT 改开关屏 / 亮度 / 熄屏超时 / 自动休眠 / 通知亮屏
-- **状态灯（板载 WS2812）**：一灯多态，按优先级自动切换——语音助手聆听（青·快呼吸）/ 思考（蓝）/ 说话（绿）/ 出错（红·快闪 3 s）、充电（橙）、低电 <15%（红·慢闪）、断网（白快呼吸 / 紫慢呼吸）、未读通知（琥珀）、Mic Monitor（冷白常亮）、熄屏自动灭灯；关掉 `switch.status_led_auto` 即可在 HA 里手动控制
+- **状态灯（板载 WS2812）**：一灯多态，按优先级自动切换——语音助手**聆听（品红·快呼吸）/ 思考（黄·中呼吸）/ 说话（绿·慢呼吸）**、出错（红·快闪 3 s）、充电（橙）、低电 <15%（红·慢闪）、断网（白快呼吸 / 紫慢呼吸）、未读通知（琥珀）、熄屏灭灯、常态暗青；关掉 `switch.status_led_auto` 即可在 HA 里手动控制
 
 ## 硬件
 
@@ -56,22 +54,24 @@
 
 一个灯，按优先级从高到低只显示一种状态（状态机在 `interval: 250ms` 段）：
 
-| 优先级 | 状态 | 颜色 | 动效 | 触发条件 |
-| --: | -- | -- | -- | -- |
-| 1 | 语音助手出错 | 红 | 快闪（90/160 ms） | `voice_assistant.on_error`，持续 3 s |
-| 2 | 聆听中 | 青 | 快呼吸 | VA `on_start` / `on_listening` |
-| 3 | 思考中 | 蓝 | 中呼吸 | VA `on_stt_end` |
-| 4 | 说话中 | 绿 | 中呼吸 | VA `on_tts_start` |
-| 5 | 充电中 | 橙 | 中呼吸（熄屏时降为暗呼吸） | 供电推断 = 充电 / 已充满 |
-| 6 | 低电 | 红 | 慢闪（120/1300 ms） | 电量 < 15% 且电池供电 |
-| 7 | 未连 WiFi | 白 | 快呼吸 | `wifi` 未连（开机阶段也走这条） |
-| 8 | 通道全断 | 紫 | 慢呼吸 | WiFi 通，但 API 与 MQTT 都断 |
-| 9 | 未读通知 | 琥珀 | 慢呼吸 | `ns_notify::unread > 0` |
-| 10 | Mic Monitor | 冷白 | 常亮 35% | `switch.mic_monitor` 为 ON |
-| 11 | 熄屏 | — | 灭 | 熄屏后不打扰 |
-| 12 | 常态在线 | 暗青 | 极慢呼吸（峰值 22%） | 其余情况 |
+| 优先级 | 状态 | 颜色 | RGB（0–255） | 动效 | 触发条件 |
+| --: | -- | -- | -- | -- | -- |
+| 1 | 语音助手出错 | 红 | 255, 0, 0 | 快闪（90/160 ms） | `voice_assistant.on_error`，持续 3 s |
+| 2 | 聆听中 | **品红** | 255, 0, 184 | 快呼吸（最急） | VA `on_start` / `on_listening` |
+| 3 | 思考中 | **黄** | 255, 209, 0 | 中呼吸 | VA `on_stt_end` |
+| 4 | 说话中 | 绿 | 0, 224, 89 | 慢呼吸（舒缓） | VA `on_tts_start` |
+| 5 | 充电中 | 橙 | 255, 89, 0 | 中呼吸（熄屏降为慢） | 供电推断 = 充电 / 已充满 |
+| 6 | 低电 | 红 | 255, 0, 0 | 慢闪（120/1300 ms） | 电量 < 15% 且电池供电 |
+| 7 | 未连 WiFi | 白 | 255, 255, 255 | 快呼吸 | `wifi` 未连（开机阶段也走这条） |
+| 8 | 通道全断 | 紫 | 153, 0, 204 | 慢呼吸 | WiFi 通，但 API 与 MQTT 都断 |
+| 9 | 未读通知 | 琥珀 | 255, 166, 0 | 慢呼吸 | `ns_notify::unread > 0` |
+| 10 | Mic Monitor | 冷白 | 140, 140, 255 | 常亮 35%（熄屏 10%） | `switch.mic_monitor` 为 ON |
+| 11 | 熄屏 | — | — | 灭 | 熄屏后不打扰 |
+| 12 | 常态在线 | 暗青 | 0, 191, 140 | 极慢呼吸（峰值 22%） | 其余情况 |
 
-设计取舍：`pulse` 特效只做亮度呼吸、不改颜色，所以颜色由状态机 `set_red/green/blue` 决定，六个动效名复用即可；特效内部 `set_publish(false)`，不会每帧往 HA/MQTT 推状态，只有**灯态变化**时才下发一次 light call。`switch.status_led_auto` 默认 ON，关掉后自动巡检直接 return，灯交回 HA 手动控制（颜色/亮度/特效）。
+**语音三态为什么是「品红 → 黄 → 绿」**：单灯珠发光面积小，原来用青/蓝/绿（色相 180°/220°/145°）在色轮上挤成一段，远看只能分出"偏冷偏亮"，分不清在听还是在想。改成色相 **315° / 50° / 145°** 后再叠「快 / 中 / 慢」三种呼吸节奏，色相 + 节奏双重区分，眯眼也能判断。红色留给故障与低电（告警语义），橙色留给充电，所以正常态不用红、不用橙。
+
+设计取舍：`pulse` 特效只做亮度呼吸、不改颜色，所以颜色由状态机 `set_red/green/blue` 决定，六个动效名复用即可；特效内部 `set_publish(false)`，不会每帧往 HA/MQTT 推状态，只有**灯态变化**时才下发一次 light call。状态机**不要**调 `set_transition_length()`（哪怕设 0 也会置 transition 标志，与 effect 冲突并刷警告）。`switch.status_led_auto` 默认 ON，关掉后自动巡检直接 return，灯交回 HA 手动控制（颜色/亮度/特效）。
 
 ## 快速开始
 
@@ -183,8 +183,7 @@ ha/                          HA 侧资源（→ /config/packages/ 部署）
 docs/                        硬件档案 / 触摸协议 / 音频方案 / 外设路线图
 reference/datasheet/         ES3C35P 规格书、原理图、IO 表、官方 quickstart
 test/display_test.yaml       早期点屏版本（字体路径按 test/ 目录写、未含 rotation/transform，仅作历史参考）
-3.5inch_ESP32-S3_快速使用手册.pdf  厂家中文手册
-CHANGELOG.md                 更新日志（本仓库自 v3.0 起；v2.x 及更早见旧仓库）
+CHANGELOG.md                 更新日志
 ```
 
 > `secrets.yaml`、`.esphome/`、`.workbuddy/` 不入库。`test/.esphome/` 是测试固件构建缓存。
@@ -214,13 +213,15 @@ CHANGELOG.md                 更新日志（本仓库自 v3.0 起；v2.x 及更�
 
 **音频**
 
-- 公告 / 媒体两条管线**不能用同一个 speaker**，必须用 `speaker: platform: mixer` 拆成两路虚拟 source。
-- `mixer` speaker 不接受 `sample_rate`（继承 output speaker）；codec、speaker、pipeline 三处采样率必须一致（当前 16 kHz）。
-- PA（IO1）低有效，`inverted: true` 统一成 "ON = 有声"；结束时延迟 150 ms 再关，避免尾音被切和 "咔" 声。
+- 公告（TTS）与音乐**走同一条管线**：单 `media_player` + 单 `speaker`，`format: NONE` 打开全部解码器（Edge TTS 出 MP3、本地提示音是 WAV）。没有混音需求就不要拆两条。
+- **不要用 `speaker: platform: mixer` 拆公告/媒体双管线**：mixer 首次启动后会把音频流参数锁死在第一路上，第二路采样率不同即报 `Incompatible audio streams`；两条管线的状态机还会互相卡，表现为「播过 TTS 就放不了音乐，反之亦然」。单管线的代价是 TTS 会打断正在放的音乐（不 ducking）。
+- codec / speaker / pipeline 三处采样率必须一致（当前 16 kHz）。
+- 板载小喇叭 **`volume_max: 75%`**：滑块 0–100% 线性映射到 0–75% 绝对音量，超过绝对 75% 就破音。`volume_initial: 0.8`（= 绝对 60%）。
+- PA（IO1）低有效，`inverted: true` 统一成 "ON = 有声"；由 100 ms 巡检在驱动 RUNNING 后 80 ms 打开，播完自动关。
 
 **部署**
 
-- `packages:` 里的 HA 自动化 id 必须与旧屏包**不重名**，否则同名覆盖导致新包静默失效（`pkha_` 前缀就是为此加的）。
+- HA `packages:` 里的自动化 / 脚本 id 统一用 `pkha_` 前缀，避免与 HA 里其它包 id 撞名后被静默覆盖。
 - 同一份 `tab_bar.yaml` 被四页各 include 一次，片段内**不能带 id**，否则重复定义编译报错。
 - `esphome:` 的 `includes` 要把 `notify_store.h` 依赖的 `notify_charset.h` 一并登记。
 - 只有一个 `switch:` / `sensor:` 顶层键；新增设备要并进已有段，否则 YAML duplicate key。
@@ -230,26 +231,28 @@ CHANGELOG.md                 更新日志（本仓库自 v3.0 起；v2.x 及更�
 
 - 麦克风与喇叭共用同一条 `i2s_audio` 总线，三处采样率必须一致（16 kHz）；`mic_gain` 只有 0/6/12/18/24/30/36/42 八档，板载 MEMS 麦从 24DB 起。
 - **`use_microphone` 必须为 `false`**：它不是"启停麦克风"，而是 REG14 bit6 的 DMIC（PDM 数字麦）选择位。板载麦是 LMA2718B381-OA7 模拟麦，置 true 会切到 PDM 通路，ADC 全 0 → RMS 恒定 **-96.3 dBFS**。
-- **I2S 总线是独占的**：`i2s_audio` 用一把互斥锁，喇叭 `try_lock()` 抢不到就每秒重试（日志 `Parent bus is busy`），麦克风采集期间一直持锁 → 两者不能同时用。配置里用 `switch.mic_monitor` 显式启停采集（默认 OFF，音乐优先），并在播放/语音助手回复前后自动让路；`sound_level` 用 `passive: true` 避免常开麦。
+- **I2S 总线是独占的**：`i2s_audio` 用一把互斥锁，喇叭 `try_lock()` 抢不到就每秒重试（日志 `Parent bus is busy`），麦克风采集期间一直持锁 → 两者不能同时用。配置里用内部对象 `switch.mic_monitor` 显式启停采集（`internal: true`，不暴露给 HA；`restore_mode: ALWAYS_OFF`），播放 / 语音助手回复前后自动让路；`sound_level` 用 `passive: true` 避免常开麦。**`restore_mode` 必须是 `ALWAYS_OFF`**：设成 `RESTORE_DEFAULT_OFF` 时，若上次调试把它存成 ON，开机会在 setup 阶段就 capture，此时监听槽信号量还是空指针 → assert → 无限重启（屏全黑、HA 偶发在线）。
 - **采集启停必须走 `script.mic_take` / `script.mic_give`**：麦克风用「监听槽计数」管理（`MAX_LISTENERS=16`），每次 `microphone.capture` 占 1 槽、`stop_capture` 还 1 槽，16 槽全还才真正停驱动并释放总线。重复 capture 会让麦永久占线，表现为「TTS 播过一次，之后再也放不出声」。`mic_give` 会在麦未停时补还一个槽（计数封顶 16，多还无害），属于自愈手段。
 - `media_player.on_play` 只在音频真正开始播放（state → PLAYING）时才触发，总线被占时永远等不到——所以它只当兜底；TTS 靠 `on_announcement`（播报管线启动瞬间就触发），音乐靠 400ms 巡检看门狗（喇叭卡在 STARTING 就让路）。
 - **功放 PA（IO1）不在播放回调里直接开**：驱动起来那一刻 ES8311 的 DAC 偏置/耦合电容还在爬升，直接开 PA 会"嘎"一声。改由 100ms 巡检按「`spk_out` 进入 RUNNING 后再等 80ms」打开，`pa_owned` 保证不覆盖 HA 里手动开关的 PA。
 - ESPHome 已移除 ADF 的 AEC，**播报会被自己的麦收进去**：音量压到 60% 以下，或播报期间暂停采集。
 - `voice_assistant` 的 `microphone` 与 `speaker`/`media_player` 输出互斥（只能选一个输出）；STT 与 TTS 在 HA 侧 pipeline 里配，设备侧只负责采集与播放。
-- 没有唤醒词时用 HA 的 `assist_satellite.start_conversation` 触发对话。
+- 触发对话有三种方式：HA 设备页的 **Start Conversation** 按钮、HA 服务 `assist_satellite.start_conversation`、板载 **BOOT 键长按 ≥ 0.8 s**（短按仍是熄屏 / 唤醒）。
+- `micro_wake_word` 官方模型只有英文（okay_nabu / hey_jarvis / hey_mycroft），中文唤醒词需自训；且常驻监听会长期占用 I2S 总线，与 `mic_take`/`mic_give` 仲裁层冲突，暂未启用。
 
 ## 文档索引
 
-- [CHANGELOG.md](CHANGELOG.md) — 版本更新日志（v3.0 起；旧屏 v0.9 ~ v2.2 见旧仓库）
-- `docs/硬件-ES3C35P引脚与驱动.md` — 官方引脚表、驱动约束、与原板的差异
+- [CHANGELOG.md](CHANGELOG.md) — 版本更新日志
+- `docs/硬件-ES3C35P引脚与驱动.md` — 官方引脚表、驱动约束、硬件差异
 - `docs/触摸-ST77922.md` — 触摸寄存器协议、FIFO 排空、四角标定方法
 - `docs/音频-ES8311方案.md` — 音频链路、ES8311 配置、HA TTS 用法
 - `docs/外设启用路线图.md` — 已启用 / 待启用外设与引脚占用清单
-- `3.5inch_ESP32-S3_快速使用手册.pdf` — 厂家中文手册
+- `reference/datasheet/` — 厂家规格书 / 原理图 / IO 表 / quickstart（PDF 原件）
 
 ## 待做
 
-- 本地唤醒词（microWakeWord）：模型占数 MB，且与 LVGL 抢 CPU，语音助手目前靠 HA 触发
+- 本地唤醒词（microWakeWord）：官方模型只有英文，中文需自训；且常驻监听长期占用 I2S 总线，与功放仲裁冲突。语音助手目前靠 HA 按钮 / BOOT 长按触发
 - TF 卡（SDIO 四位）：ESPHome 官方无组件，需外部组件 + framework 选项调整
 - 扩展口传感器（I2C 温湿度 / 光照，UART 空气质量 / 毫米波）
 - 供电状态 100% 判定：需从 TP4054 CHRG 脚飞线到 IO45、USB 5V 分压到 IO46
+- 音乐与 TTS 同时出声：单管线不混音，TTS 会打断音乐；要叠加得重新引入混音且避开 mixer 的采样率锁死问题

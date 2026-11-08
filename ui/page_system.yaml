@@ -376,7 +376,7 @@ lvgl:
                   text_font: ui_font_small
                   text_color: 0xFFFFFF
                   recolor: true
-              # 第4行：屏幕亮度（light.ha_monitor_display_screen_light 的 brightness 属性）
+              # 第4行：屏幕亮度（light.pocket_homeassistant_screen_light 的 brightness 属性）
               - label:
                   align: left_mid
                   x: 6

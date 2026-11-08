@@ -1,5 +1,7 @@
 # 二进制与发布包
 *.zip
+*.bin
+*.elf
 
 # 工具与缓存
 .workbuddy/

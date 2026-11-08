@@ -193,7 +193,7 @@ automation:
                 "low_battery":      states(SLOT.low_battery | default('')) | float(none),
                 "nas_cpu":          states(SLOT.nas_cpu | default('')) | float(none),
                 "nas_mem":          states(SLOT.nas_mem | default('')) | float(none),
-                "screen_bright":    state_attr('light.ha_monitor_display_screen_light', 'brightness') | float(none),
+                "screen_bright":    state_attr('light.pocket_homeassistant_screen_light', 'brightness') | float(none),
                 "nas_download":     states(SLOT.nas_download | default('')) | float(none),
                 "nas_upload":       states(SLOT.nas_upload | default('')) | float(none),
 

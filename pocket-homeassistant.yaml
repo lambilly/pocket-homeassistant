@@ -1,13 +1,12 @@
 # ==========================================================
-# Pocket HomeAssistant v3.0（迁移版，2026-11-07）
-#   自 HA Monitor Display v2.2.1 迁移 UI / MQTT / 熄屏逻辑，
-#   硬件层换为 LCDWIKI ES3C35P（ESP32-S3 N16R8 + ST77922 QSPI）：
-#     · 显示：mipi_spi CUSTOM，初始化序列取自官方 wiki + ESPHome dev 分支，
+# Pocket HomeAssistant v3.4（口袋版 HA 信息屏）
+#   硬件：LCDWIKI ES3C35P（ESP32-S3 N16R8 + 3.5" 320×480 IPS）
+#     · 显示：ST77922 QSPI，mipi_spi CUSTOM，初始化序列取自官方 wiki + ESPHome dev 分支，
 #       序列开头双软复位 + 120ms（屏 RESET 硬线接 EN，OTA 软重启无硬复位）
 #     · 触摸：自定义组件 components/st77922_touch（I2C 0x55，换轴/反转在组件内）
+#     · 音频：ES8311 codec + FM8002E 功放，I2S 单总线分时复用（喇叭 / 麦克风互斥）
 #     · 背光 GPIO41 LEDC / 电池 ADC IO8(×2 分压还原) / WS2812 IO40 / BOOT 键 IO0
-#   音频暂未迁移：新板是 ES8311 codec，需自定义初始化组件，后续版本接入
-#   MQTT 主题独立于旧屏：
+#   MQTT 主题：
 #     订阅 home/pocket-homeassistant        （HA 数据帧，5s 一推）
 #          home/pocket-homeassistant/notify （通知）
 #          home/pocket-homeassistant/cmd/*  （远程控制）
@@ -442,15 +441,10 @@ web_server:
 # 屏幕硬件配置（ES3C35P：ST77922 QSPI 屏 + 内置触摸 I2C 0x55）
 # ==========================================================
 external_components:
-  # st77922_touch：本板触摸自写组件
-  # i2c：官方组件的本地修补版。官方 i2c 的 recover_() 在 setup() 阶段会调用
-  #      App.feed_wdt()，此时 Application 内部队列尚未初始化 → xQueueSemaphoreTake(NULL)
-  #      assert 崩溃。冷启动时触摸 IC 把 SCL 拉低即必然触发 → 无限重启（屏全黑但 MQTT 偶发在线）。
-  #      修补内容见 components/i2c/i2c_bus_esp_idf.cpp 里的 PATCH 注释。
   - source:
       type: local
       path: components
-    components: [st77922_touch, i2c]
+    components: [st77922_touch]
 
 spi:
   id: display_spi
@@ -488,17 +482,10 @@ audio_dac:
     sample_rate: 16000       # TTS 常用 16k，与 speaker 必须一致
     bits_per_sample: 16bit
     use_mclk: true           # ESP32 输出 MCLK = 256×16k = 4.096MHz
-    # 麦克风通路：ES8311 ADC 上电，DIN=IO16 回传
-    #   ⚠ 这一位必须保持 false！ESPHome 的 use_microphone 不是"启停麦克风"，
-    #     它对应 REG14 bit6 = 选择 DMIC（PDM 数字麦）输入：
-    #       reg14 = 0x1A;  if (use_mic) reg14 |= BIT(6);   // 源码注释：Enable PDM digital microphone
-    #     本板麦是 LMA2718B381-OA7（OA = Analog Output）模拟麦，走 MIC1P/MIC1N 差分模拟输入。
-    #     置 true 会切到 PDM 通路 → ADC 全 0 → RMS 恒定 -96.3dBFS。
-    #     模拟通路由 setup() 无条件打开（REG0D/REG0E/REG1C），不依赖这个开关。
+    #   ⚠ 必须保持 false：ESPHome 的 use_microphone 对应 REG14 bit6 = 选 DMIC(PDM 数字麦)，
+    #     本板 LMA2718B381-OA7 是模拟麦（走 MIC1P/MIC1N），置 true 会切 PDM 通路 → RMS 恒 -96.3dB
     use_microphone: false
-    # 增益八档枚举 0/6/12/18/24/30/36/42 dB；默认 42dB 对板载 MEMS 麦偏大，
-    #   先从 24dB 起（拍手应明显到 -20dBFS 左右，削顶就再降一档）
-    mic_gain: 24DB
+    mic_gain: 24DB           # 八档 0/6/12/18/24/30/36/42dB，板载 MEMS 麦 24dB 起
 
 speaker:
   - platform: i2s_audio
@@ -511,51 +498,49 @@ speaker:
     bits_per_sample: 16bit
     channel: mono
     buffer_duration: 200ms
-  # ESPHome 要求公告/媒体两条管线各用一个 speaker，用 mixer 把同一路物理喇叭
-  # 拆成两个虚拟 source（音频在 mixer 内混音后统一送到 spk_out）
-  - platform: mixer
-    id: spk_mix
-    output_speaker: spk_out
-    num_channels: 1
-    source_speakers:
-      - id: spk_announce      # 公告/TTS 播报
-      - id: spk_media         # 音乐/媒体
+  # 原来这里还有一个 mixer（spk_announce / spk_media 两个 source），把一路喇叭拆成
+  # 「公告管线 + 媒体管线」。2026-11-08 实测：双管线只要有任意一路先播过一次，
+  # 另一路就再也出不了声（TTS 播过 → 音乐哑；音乐播过 → TTS 哑），
+  # 典型的 mixer 与 media_player 双管线协商问题（mixer 会锁死第一路的 audio_stream_info）。
+  # 本机从不需要「音乐 + 播报混音」，所以改成单管线：公告与音乐共用 spk_out。
+  # 省掉一个 mixer 任务 + 两个环形缓冲，也彻底绕开双管线互斥。
 
 media_player:
   - platform: speaker
     id: pocket_media
     name: "Pocket Speaker"
     icon: mdi:speaker
-    # 公告管线（HA 的 announcement/语音播报优先走这里，WAV 最稳）
+    # 单管线：HA 的 TTS 播报与音乐都走这一条（不写 media_pipeline 即为单管线模式）
     announcement_pipeline:
-      speaker: spk_announce
-      format: WAV
+      speaker: spk_out
+      format: NONE            # NONE = 打开全部解码器（WAV/MP3/FLAC），TTS 与音乐通吃
       sample_rate: 16000
       num_channels: 1
-    # 媒体管线：NONE = 打开全部解码器（WAV/MP3/FLAC），兼容各种 TTS 输出
-    media_pipeline:
-      speaker: spk_media
-      format: NONE
-      sample_rate: 16000
-      num_channels: 1
-    volume_initial: 0.6
+    # 音量语义（ESPHome speaker media_player）：滑块值 0~1 会被 remap 到
+    #   [volume_min, volume_max]，所以这里的百分比都是「相对滑块」，不是绝对音量。
+    #   volume_max 75% ⇒ 滑块 100% = 喇叭绝对 75%（实测再大破音）；
+    #   滑块 80% = 绝对 60%（就是加 volume_max 之前 0.6 的那种响度）。
+    #   初始值取 0.8，让开机默认响度与旧版 60% 完全一致。
+    volume_initial: 0.8
+    # 板载喇叭小，音量超过 75% 就开始破音，直接把上限钳在这里（HA 滑块也拉不过去）
+    volume_max: 75%
     task_stack_in_psram: true       # 解码任务栈放 PSRAM，给 LVGL 腾内部 RAM
-    # ⚠ I2S 总线是独占的：麦克风采集中，喇叭 try_lock 会失败并每秒重试
-    #   （日志 "Parent bus is busy"）。所有采集/让路统一走 script.mic_take / mic_give，
-    #   严禁在这里直接写 microphone.capture（见下方「麦克风总线仲裁」注释）。
-    # ⚠ 功放 PA 不在这里直接开：起播瞬间时钟/偏置没稳就开 PA 会"嘎"一声爆音，
-    #   改由 100ms 巡检按「喇叭驱动已 RUNNING 再等 80ms」的时序打开（见 interval 段）。
+    # ⚠ I2S 总线独占：麦克风采集中喇叭 try_lock 会失败并每秒重试。
+    #   所有采集/让路统一走 script.mic_take / mic_give，严禁直接写 microphone.capture。
+    # ⚠ PA 不在这里直接开：起播瞬间时钟/偏置没稳就开 PA 会"嘎"一声爆音，
+    #   改由 100ms 巡检按「喇叭驱动已 RUNNING 再等 80ms」的时序打开。
     on_play:
       - lambda: 'id(pa_want) = true;'
       - script.execute: mic_give
-    # 公告/TTS 走这条：它在播报管线启动的瞬间就触发（早于喇叭抢锁），
-    #   所以 Mic Monitor 开着时 TTS 也能立刻让路
+      - logger.log: "audio: play start"
     on_announcement:
       - lambda: 'id(pa_want) = true;'
       - script.execute: mic_give
+      - logger.log: "audio: announcement start"
     on_idle:
       # 音频已放完（缓冲已排空），功放交给巡检关，尾音不会被切
       - lambda: 'id(pa_want) = false;'
+      - logger.log: "audio: idle"
       # 播放结束后，如果「Mic Monitor」开关还开着，自动恢复采集（mic_take 自带去重）
       - delay: 400ms
       - if:
@@ -565,9 +550,8 @@ media_player:
             - script.execute: mic_take
 
 # ==========================================================
-# 麦克风：ES8311 ADC → I2S DIN(IO16) → ESP32
-#   与喇叭共用同一条 i2s_bus（ESP32-S3 支持 TX/RX 全双工，采样率必须一致）
-#   输入侧只有一路，单声道；ES8311 的 MIC 接在左声道
+# 麦克风（ES8311 ADC → I2S DIN=IO16）
+#   本步只验证「采集通路」，不加语音助手、不加总线仲裁
 # ==========================================================
 microphone:
   - platform: i2s_audio
@@ -581,24 +565,20 @@ microphone:
 
 # ==========================================================
 # HA 语音助手（Assist）
-#   链路：mic_in → ESP32 → Native API → HA pipeline(STT/意图/TTS) → pocket_media 播报
-#   STT/意图/TTS 全在 HA 侧跑，设备只做采集与播放
-#   触发方式：HA 里 assist_satellite 实体「开始对话」（暂不用唤醒词，
-#             唤醒词 microWakeWord 会占几 MB 模型并与 LVGL 抢 CPU，放到下一档）
-#   注意：喇叭出声会被自己的麦收进去（ESPHome 无 AEC），
-#         播报音量建议 ≤60%，或播报时暂停采集
+#   本步只验证组件能否正常启动：不加仲裁脚本、不加开关、不加 pa_want
+#   STT / 意图 / TTS 全在 HA 侧跑，设备只负责采集与播报
 # ==========================================================
 voice_assistant:
   id: va
   microphone:
     microphone: mic_in
-    gain_factor: 4                # 软件增益 1~64（1 = 原始，4 = +12dB）
+    gain_factor: 4                # 软件增益 1~64（4 = +12dB）
     bits_per_sample: 16
     channels: 0                   # 0 = 左声道
-  media_player: pocket_media      # 与 speaker 互斥，二选一；这里复用已配好的喇叭
+  media_player: pocket_media
   use_wake_word: false
-  noise_suppression_level: 2      # 0~4，2 = 中等降噪
-  auto_gain: 0dBFS                # 0 = 关闭自动增益（mic_gain 已在 codec 侧给足）
+  noise_suppression_level: 2
+  auto_gain: 0dBFS
   volume_multiplier: 1.0
   conversation_timeout: 120s
   on_start:
@@ -611,14 +591,14 @@ voice_assistant:
         format: "VA: stt_end -> %s"
         args: ["x.c_str()"]
     - lambda: 'id(led_va) = 2;'          # 状态灯：思考（等意图/回复）
-  # 回复音频要播之前先放开麦克风，否则喇叭抢不到 I2S 总线（回复会没声音）
+  # 回复音频播放前先放开麦克风，否则喇叭抢不到 I2S 总线（回复会没声音）
   #   ⚠ 必须走 mic_give：它除了归还本机占的槽，还会补还历史上残留的槽
   on_tts_start:
     - script.execute: mic_give
     - lambda: 'id(led_va) = 3;'          # 状态灯：说话
   on_tts_end:
     - lambda: 'id(led_va) = 0;'
-  # 一轮对话结束，如果监测开关还开着就恢复采集（mic_take 自带去重，不会重复占槽）
+  # 一轮对话结束，如果监测开关还开着就恢复采集（mic_take 自带去重）
   on_end:
     - lambda: 'id(led_va) = 0;'
     - if:
@@ -636,23 +616,6 @@ voice_assistant:
         id(pa_want) = false;
         id(led_va) = 0;
         id(led_err_until) = millis() + 3000;   // 状态灯：红闪 3 秒
-
-# ==========================================================
-# 麦克风总线仲裁（I2S 只有一条总线，麦克风与喇叭互斥）
-#   ⚠ 踩过的坑：ESPHome 的 i2s 麦克风用「监听槽计数」启停（MAX_LISTENERS=16），
-#      每次 microphone.capture 占 1 个槽、stop_capture 还 1 个，
-#      必须 16 个槽全归还，麦克风才真正停驱动、unlock 那条 I2S 总线。
-#      之前 on_idle 和 VA on_end 各 capture 一次 → 多占槽 → 以后只 stop 一次还不清
-#      → 麦克风永远在跑、永远独占总线 → 日志 "Parent bus is busy" 每秒重试
-#      → 现象就是「TTS 播过一次，之后再也放不出声」。
-#   对策：
-#     ① 所有采集/让路只走 mic_take / mic_give，capture 用 mic_held 去重（绝不重复占槽）；
-#     ② stop_capture 多还几次是安全的（槽计数封顶 16，多还无效），
-#        所以 mic_give 会在麦克风还没停时再补一枪，把历史残留的槽也清掉；
-#     ③ interval 每 400ms 巡检：喇叭卡在 STARTING（抢锁失败重试中）而麦克风还在跑，
-#        就主动让路 —— 这样即使 Mic Monitor 开着，音乐/TTS 也能在 2 秒内出声。
-#   实现：script.mic_take / mic_give 定义在文件末尾的 script: 段（约 1980 行）
-# ==========================================================
 
 output:
   - platform: ledc
@@ -674,7 +637,7 @@ light:
   #   颜色/动效由 interval 段「状态灯状态机」按优先级自动切换；
   #   关掉 switch.status_led_auto 后即可在 HA 里手动控制这个灯（纯色/亮度）。
   #   注意：pulse 只做亮度呼吸，颜色由状态机 set_red/green/blue 决定，
-  #        所以每个状态复用同一个 effect 名即可，不必为每种颜色各配一条。
+  #        所以多个灯态复用同一个 effect 名即可，不必每种颜色各配一条。
   - platform: esp32_rmt_led_strip
     id: status_led
     name: "Status LED"
@@ -1015,14 +978,12 @@ interval:
 
   # ----------------------------------------------------------
   # 功放（FM8002E，IO1 低有效）开关时序 —— 消除起播/切换时的"嘎"爆音
-  #   爆音成因：喇叭驱动起来的那一刻 I2S 时钟才开始跑，ES8311 DAC 的直流偏置
-  #     与输出耦合电容要从 0 充到 VDD/2，这个阶跃如果被功放放大就是"嘎"一声。
+  #   爆音成因：喇叭驱动起来那一刻 I2S 时钟才开始跑，ES8311 DAC 直流偏置 +
+  #     输出耦合电容从 0 充到 VDD/2，阶跃被功放放大就是"嘎"一声。
   #   对策：① 播放期间 pa_want=true，但 PA 先不开；
-  #         ② 等 spk_out 真正进入 RUNNING（i2s_channel_enable 完成、时钟在跑）后
-  #            再等 80ms，让偏置/耦合建立；
-  #         ③ 这时才开 PA —— 功放看到的输入已经是稳定直流，不放大阶跃 → 无爆音。
-  #   代价：起播头 80ms 听不到（约一个音节），换掉爆音是值得的。
-  #   关：驱动一停（is_stopped）立即关 PA，避免无声时功放持续放底噪。
+  #         ② 等 spk_out 真正进入 RUNNING 后再等 80ms，让偏置/耦合建立；
+  #         ③ 这时才开 PA —— 功放看到的是稳定直流，不放大阶跃 → 无爆音。
+  #   代价：起播头 80ms 听不到（约一个音节）。驱动一停立即关 PA，避免放底噪。
   # ----------------------------------------------------------
   - interval: 100ms
     then:
@@ -1058,7 +1019,7 @@ interval:
   #   优先级（高 → 低）：出错红闪 > 聆听 > 思考 > 说话 > 充电 > 低电
   #                     > 断网 > 未读通知 > Mic Monitor > 熄屏熄灭 > 在线待机
   #   只在「灯态变化」时才下发一次 light call：
-  #     · 呼吸/闪烁由 light effect 自己在输出层做（pulse/strobe 内部 set_publish(false)），
+  #     · 呼吸/闪烁由 light effect 在输出层自己做（pulse/strobe 内部 set_publish(false)），
   #       不会每帧往 HA/MQTT 发状态；
   #     · 250ms 巡检只负责比对编号，静默时零开销。
   #   关掉 switch.status_led_auto 后本段直接 return，灯交给 HA 手动控制。
@@ -1071,7 +1032,7 @@ interval:
           const uint32_t now = millis();
           const bool screen_off = id(ui_screen_off);
 
-          // 灯态编号（和下面 switch 保持一致）
+          // 灯态编号
           const int ST_OFF = 0, ST_BOOT = 1, ST_MIC = 2, ST_UNREAD = 3, ST_CHARGING = 4,
                     ST_SPEAK = 5, ST_THINK = 6, ST_LISTEN = 7, ST_LOWBAT = 8,
                     ST_OFFLINE = 9, ST_ERR = 10, ST_IDLE = 11;
@@ -1126,9 +1087,14 @@ interval:
             case ST_UNREAD:    r = 1.00f; g = 0.65f; b = 0.00f; eff = "led_breathe_slow"; break;  // 琥珀
             case ST_CHARGING:  r = 1.00f; g = 0.35f; b = 0.00f;                                  // 橙
                                eff = screen_off ? "led_breathe_slow" : "led_breathe_mid"; break;
-            case ST_SPEAK:     r = 0.00f; g = 0.85f; b = 0.25f; eff = "led_breathe_mid"; break;   // 绿
-            case ST_THINK:     r = 0.15f; g = 0.35f; b = 1.00f; eff = "led_breathe_mid"; break;   // 蓝
-            case ST_LISTEN:    r = 0.00f; g = 0.90f; b = 0.85f; eff = "led_breathe_fast"; break;  // 青
+            // 语音三态改用「色相拉开 + 呼吸节奏不同」的双重区分：
+            //   聆听 = 品红快呼吸（最急，提示"该你说了"）
+            //   思考 = 黄色中呼吸
+            //   说话 = 绿色慢呼吸（舒缓，表示"我在讲"）
+            // 原来的 青→蓝→绿 挤在色轮同一段，单灯小面积下几乎分不出，故废弃。
+            case ST_SPEAK:     r = 0.00f; g = 0.88f; b = 0.35f; eff = "led_breathe_slow"; break; // 绿（慢）
+            case ST_THINK:     r = 1.00f; g = 0.82f; b = 0.00f; eff = "led_breathe_mid"; break;  // 黄（中）
+            case ST_LISTEN:    r = 1.00f; g = 0.00f; b = 0.72f; eff = "led_breathe_fast"; break; // 品红（快）
             case ST_LOWBAT:    r = 1.00f; g = 0.00f; b = 0.00f; eff = "led_blink_red_slow"; break;
             case ST_OFFLINE:   r = 0.60f; g = 0.00f; b = 0.80f; eff = "led_breathe_slow"; break;  // 紫
             case ST_ERR:       r = 1.00f; g = 0.00f; b = 0.00f; eff = "led_blink_red_fast"; break;
@@ -1143,9 +1109,12 @@ interval:
           call.set_green(g);
           call.set_blue(b);
           call.set_brightness(bri);
+          // 注意：这里不要再调 set_transition_length()——只要调用（哪怕 0）就会置上
+          //   transition 标志，而带 effect 的调用会被 LightCall 判为「effect 不能和
+          //   transition 共用」，日志每次切灯态都刷一条警告。不设 transition 时，
+          //   LightCall 因为已有 effect 也不会自动补默认的 1s 过渡，行为完全一致。
           if (eff == nullptr) call.set_effect("");   // 空串 = 关特效（纯常亮）
           else call.set_effect(eff);
-          call.set_transition_length(0);
           call.perform();
 
 debug:
@@ -1430,17 +1399,17 @@ globals:
     initial_value: '0'
 
   # ---- 麦克风总线仲裁（见 script.mic_take / mic_give）----
-  - id: mic_held           # 本机（Mic Monitor）是否正持有 1 个麦克风监听槽
+  - id: mic_held           # 本机（Mic Monitor）是否持有 1 个麦克风监听槽
     type: bool
     restore_value: false
     initial_value: 'false'
-  - id: mic_take_ms        # 最近一次开麦的时刻，给看门狗留「刚开麦别马上掐」的缓冲
+  - id: mic_take_ms        # 最近一次开麦时刻，给看门狗留「刚开麦别马上掐」的缓冲
     type: uint32_t
     restore_value: false
     initial_value: '0'
 
-  # ---- 功放开机时序（消除起播"嘎"的爆音）----
-  - id: pa_want            # 是否有播放任务（on_play/on_announcement 置 true，on_idle 置 false）
+  # ---- 功放上电时序（消除起播"嘎"的爆音）----
+  - id: pa_want            # 有播放任务（on_play/on_announcement 置 true，on_idle 置 false）
     type: bool
     restore_value: false
     initial_value: 'false'
@@ -1448,7 +1417,7 @@ globals:
     type: uint32_t
     restore_value: false
     initial_value: '0'
-  - id: pa_owned           # PA 是否由本时序打开（true 才由它关，避免覆盖 HA 里手动开关）
+  - id: pa_owned           # PA 是否由本时序打开（true 才由它关，避免覆盖 HA 手动开关）
     type: bool
     restore_value: false
     initial_value: 'false'
@@ -1507,26 +1476,6 @@ sensor:
       - lambda: |-
           float p = (x - 3.30f) / (4.20f - 3.30f) * 100.0f;
           return clamp(p, 0.0f, 100.0f);
-
-  # ==========================================================
-  # 麦克风电平（验证 MIC 通路用）
-  #   说话/拍手时 RMS 应明显上升；长期贴在 -90dB 说明 ADC 没开或增益过低
-  #   passive: false = 主动按 measurement_duration 连续采样（会占用 I2S 输入）
-  #   验证通过后可把 passive 改 true / 或整段注释掉，减少 CPU 占用
-  # ==========================================================
-  - platform: sound_level
-    id: mic_level
-    microphone:
-      microphone: mic_in
-    # passive: true = 不自己启停麦克风，只被动接收「有人在采」的数据
-    #   I2S 总线是独占资源（喇叭 try_lock 抢不到就每秒重试），若这里设 false
-    #   麦克风会常开并一直占线 → 喇叭永远放不出声（日志 "Parent bus is busy"）。
-    #   采集由 switch.mic_monitor 或 voice_assistant 按需启停。
-    passive: true
-    measurement_duration: 1000ms
-    rms:
-      id: mic_rms
-      name: "Pocket Mic RMS"
 
   # loop_time / free 只能写在 platform: debug 下（由顶层 debug: 组件接管）
   - platform: debug
@@ -1864,6 +1813,20 @@ sensor:
       if (id(ha_data_last_ms) == 0) return {};
       return id(hd_stock_chg);
 
+  # ==========================================================
+  # 麦克风电平（验证采集通路用；passive: true = 不自己启停麦克风）
+  #   本步不加开关，所以 RMS 暂时不会动，只看「能不能正常启动」
+  # ==========================================================
+  - platform: sound_level
+    id: mic_level
+    microphone:
+      microphone: mic_in
+    passive: true
+    measurement_duration: 1000ms
+    rms:
+      id: mic_rms
+      name: "Mic RMS"
+
 number:
   # 熄屏超时（秒），默认 60s，HA 可调，重启后保留
   - platform: template
@@ -2004,30 +1967,61 @@ select:
 
 switch:
   # 功放使能：GPIO1 低电平有效 → inverted:true 让 ON = 输出低 = 功放开
-  #   不直接跟随 on_play：由 100ms 巡检按「驱动 RUNNING 后再等 80ms」的时序开关，
-  #   否则起播/切换瞬间会"嘎"一声爆音（详见 interval 段「功放开机时序」）
+  #   由 100ms 巡检按播放时序自动控制，纯内部量，不暴露给 HA（internal）。
+  #   要排查「没声音是功放没开还是数据没到」时，把 internal 改成 false 重新编译即可。
   - platform: gpio
     id: pa_en
-    name: "Speaker PA"
-    icon: mdi:volume-high
-    entity_category: diagnostic       # 调试期暴露给 HA，方便手动开关功放排查
+    internal: true
     pin:
       number: GPIO1
       inverted: true
     restore_mode: ALWAYS_OFF         # 上电默认关功放（无底噪）
 
-  # 麦克风采集开关（噪声监测用）
-  #   ⚠ 与喇叭互斥：ESP32 只有一条 I2S 总线，麦克风采集时会独占锁，
-  #     喇叭取不到锁就每秒重试（Parent bus is busy）→ 放不出声。
-  #   默认 OFF（音乐优先）。打开后 sound_level 每 1 秒出一次 RMS；
-  #   播放开始（含 HA 播报/音乐）会自动让路，播放结束自动恢复，
-  #   全部经 script.mic_take / mic_give 统一管理，不会重复占监听槽。
+  # 自动休眠总开关（关掉后常亮，适合调试/演示）
   - platform: template
-    id: mic_monitor
-    name: "Mic Monitor"
-    icon: mdi:microphone
+    id: auto_sleep_switch
+    name: "Auto Screen Sleep"
+    icon: mdi:sleep
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    lambda: |-
+      return id(ui_auto_sleep_enabled);
+    turn_on_action:
+      - lambda: id(ui_auto_sleep_enabled) = true;
+    turn_off_action:
+      - lambda: id(ui_auto_sleep_enabled) = false;
+      # 关闭自动休眠时顺便点亮，避免停在黑屏状态
+      - script.execute: wake_screen
+
+  # 通知亮屏开关（v2.0 NOTIFY）
+  #   默认关：一次推送就唤醒屏幕，20mA 待机会瞬间回到 150mA+ 的亮屏功耗。
+  #   打开后，收到通知且屏幕处于熄屏态时才点亮；亮屏中收到通知不受影响。
+  - platform: template
+    id: notify_wake_on_msg
+    name: "Notify Wake Screen"
+    icon: mdi:bell-ring
+    entity_category: config
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
+
+  # 麦克风采集开关（噪声监测用）
+  #   ⚠ 与喇叭互斥：ESP32 只有一条 I2S 总线，麦克风采集会独占锁，
+  #     喇叭取不到锁就每秒重试（Parent bus is busy）→ 放不出声。
+  #   ⚠ restore_mode 必须是 ALWAYS_OFF：用 RESTORE_DEFAULT_OFF 时，若上次调试
+  #     把开关留在 ON，每次开机会「恢复 ON → 立刻 microphone.capture」，
+  #     而此时麦克风组件的 setup() 还没跑（active_listeners_semaphore_ 尚未创建）
+  #     → xSemaphoreTake(NULL) → assert xQueueSemaphoreTake → 无限重启、屏全黑。
+  #   默认 OFF（音乐优先）。打开后 sound_level 每 1 秒出一次 RMS；
+  #   播放开始/结束、语音助手回复前后会自动让路与恢复。
+  #   internal：纯内部开关，不在 HA 暴露（避免误开抢总线导致喇叭没声）。
+  #   想临时用「Mic RMS」看电平：把 internal 改成 false 重新编译，
+  #   或者直接对设备说话触发一次语音助手（VA 会话期间麦克风也会采，RMS 同样出数）。
+  - platform: template
+    id: mic_monitor
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
     turn_on_action:
       - script.execute: mic_take
     turn_off_action:
@@ -2048,33 +2042,6 @@ switch:
       - lambda: 'id(led_state) = -1;'
     turn_off_action:
       - lambda: 'id(led_state) = -1;'
-
-  # 自动休眠总开关（关掉后常亮，适合调试/演示）
-  - platform: template
-    id: auto_sleep_switch
-    name: "Auto Screen Sleep"
-    icon: mdi:sleep
-    entity_category: config
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
-    lambda: |-
-      return id(ui_auto_sleep_enabled);
-    turn_on_action:
-      - lambda: id(ui_auto_sleep_enabled) = true;
-    turn_off_action:
-      - lambda: id(ui_auto_sleep_enabled) = false;
-      # 关闭自动休眠时顺便点亮，避免停在黑屏状态
-      - script.execute: wake_screen
-
-  # 通知亮屏开关（v2.0 NOTIFY）  #   默认关：一次推送就唤醒屏幕，20mA 待机会瞬间回到 150mA+ 的亮屏功耗。
-  #   打开后，收到通知且屏幕处于熄屏态时才点亮；亮屏中收到通知不受影响。
-  - platform: template
-    id: notify_wake_on_msg
-    name: "Notify Wake Screen"
-    icon: mdi:bell-ring
-    entity_category: config
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
 
 script:
   # ----------------------------------------------------------
@@ -2194,28 +2161,27 @@ script:
             return std::string(buf);
 
   # ----------------------------------------------------------
-  # 麦克风总线仲裁（I2S 只有一条总线，麦与喇叭互斥）
-  #   为什么必须集中管理：
-  #     ESPHome 的 i2s 麦克风用「监听槽计数」启停（MAX_LISTENERS=16）：
+  # 麦克风采集启停统一入口
+  #   ⚠ 踩过的坑：i2s 麦克风用「监听槽计数」启停（MAX_LISTENERS=16），
   #     每次 microphone.capture 占 1 槽、stop_capture 还 1 槽，
-  #     16 个槽全部归还后麦克风才真正停驱动、unlock 那条 I2S 总线。
-  #     若同一轮里 capture 了两次（旧写法 on_idle 与 VA on_end 各来一次），
-  #     之后只 stop 一次还不清 → 麦克风永远在跑、永远独占总线
-  #     → 喇叭 try_lock 失败、日志 "Parent bus is busy" 每秒重试
+  #     16 槽全归还才停驱动并 unlock I2S 总线。旧写法 on_idle 与 VA on_end
+  #     各 capture 一次 → 多占 1 槽 → 之后只 stop 一次还不清 → 麦克风永远在跑、
+  #     独占总线 → 喇叭 try_lock 永远失败（Parent bus is busy）
   #     → 现象「TTS 播过一次，之后再也放不出声」。
-  #   规则：
-  #     ① 任何地方都不许直接写 microphone.capture / stop_capture，
-  #        统一走 mic_take / mic_give（capture 用 mic_held 去重）；
-  #     ② stop_capture 多还是安全的（计数封顶 16，多还无效），
-  #        所以 mic_give 会在麦克风没停时补一枪，顺手清掉历史残留槽；
-  #     ③ 看门狗 interval 见上方 400ms 巡检段。
+  #   规则：任何地方都不许直接写 microphone.capture / stop_capture，
+  #         统一走 mic_take / mic_give（capture 用 mic_held 去重）。
   # ----------------------------------------------------------
   - id: mic_take
     mode: single            # 内部无 delay，实际不会重叠执行
     then:
       - if:
           condition:
-            lambda: 'return !id(mic_held);'
+            and:
+              - lambda: 'return !id(mic_held);'
+              # 喇叭还占着 I2S 总线时不要抢：抢到槽但 try_lock 失败，麦克风会停在
+              # STARTING 每秒重试（日志刷 "Driver failed to start; retrying in 1 second"），
+              # 一直刷到音乐结束为止。等总线空了再开麦（on_idle 会再叫一次 mic_take）。
+              - lambda: 'return id(spk_out).is_stopped();'
           then:
             - lambda: 'id(mic_held) = true; id(mic_take_ms) = millis();'
             - microphone.capture: mic_in
@@ -2228,7 +2194,7 @@ script:
             lambda: 'return id(mic_held);'
           then:
             - lambda: 'id(mic_held) = false;'
-      # 补枪：不管本机是否持有，只要麦克风还没停就再还一个槽（多还无害）
+      # 补枪：不管本机是否持有，只要麦克风还活着就再还一个槽（多还无害）
       - if:
           condition:
             lambda: 'return !id(mic_in).is_stopped();'
@@ -2244,6 +2210,30 @@ script:
 # 但 loop() 在 MQTT 首帧到达前就会发布初始值，所以这里加
 # ha_data_last_ms == 0 守卫，避免开机瞬间把 "--" 误判成"关"。
 # ==========================================================
+# ==========================================================
+# HA 侧按钮：语音助手手动触发
+#   ESPHome 的 voice_assistant 在 HA 里生成的是 assist_satellite 实体，
+#   实体卡片上默认没有「开始对话」按钮，所以这里显式做两个按钮，
+#   HA 里点一下就等同于按卫星的开始对话（设备开麦 → STT → 意图 → TTS）。
+# ==========================================================
+button:
+  - platform: template
+    id: va_start_btn
+    name: "Start Conversation"
+    icon: mdi:microphone
+    on_press:
+      - voice_assistant.start:
+          id: va
+          silence_detection: true
+
+  - platform: template
+    id: va_stop_btn
+    name: "Stop Conversation"
+    icon: mdi:microphone-off
+    on_press:
+      - voice_assistant.stop:
+          id: va
+
 binary_sensor:
   # ==========================================================
   # BOOT 键（IO0）：短按 = 熄屏/唤醒切换（与触摸唤醒同一套脚本，状态一致）
@@ -2257,14 +2247,40 @@ binary_sensor:
       inverted: true
     filters:
       - delayed_on: 50ms
-    on_press:
-      - if:
-          condition:
-            lambda: return id(ui_screen_off);
-          then:
-            - script.execute: wake_screen
-          else:
-            - script.execute: sleep_screen
+    # 短按 = 熄屏/唤醒；长按 ≥0.8s = 直接开语音对话（免开 HA 的硬件入口）
+    #   长按优先：语音在跑时再长按 = 掐掉本轮
+    #   熄屏状态下长按会先亮屏，再等 LVGL 刷新一下才起麦
+    on_multi_click:
+      - timing:
+          - ON for at least 0.8s
+        then:
+          - if:
+              condition:
+                lambda: 'return id(va).is_running();'
+              then:
+                - voice_assistant.stop:
+                    id: va
+              else:
+                - if:
+                    condition:
+                      lambda: 'return id(ui_screen_off);'
+                    then:
+                      - script.execute: wake_screen
+                - delay: 120ms
+                - voice_assistant.start:
+                    id: va
+                    silence_detection: true
+      - timing:
+          - ON for at most 0.6s
+          - OFF for at least 0.2s
+        then:
+          - if:
+              condition:
+                lambda: 'return id(ui_screen_off);'
+              then:
+                - script.execute: wake_screen
+              else:
+                - script.execute: sleep_screen
   # device_a_online（通用槽位：任意 binary_sensor，名称由 HA 下发）
   - platform: template
     id: ha_device_a_online

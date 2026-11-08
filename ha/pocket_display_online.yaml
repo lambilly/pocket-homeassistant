@@ -1,5 +1,5 @@
 # 屏幕在线检测（MQTT 心跳）
-# 部署位置：/config/packages/monitor_display_online.yaml
+# 部署位置：/config/packages/pocket_display_online.yaml
 #
 # 原理：屏幕 pocket-homeassistant 通过 MQTT 每约 9 秒上报一次 free_heap 等传感器数据，
 #      这里订阅该心跳 topic；45 秒收不到任何消息即超时（expire_after）→ 实体变 unavailable，
