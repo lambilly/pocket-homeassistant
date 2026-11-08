@@ -538,17 +538,19 @@ media_player:
     # ⚠ I2S 总线是独占的：麦克风采集中，喇叭 try_lock 会失败并每秒重试
     #   （日志 "Parent bus is busy"）。所有采集/让路统一走 script.mic_take / mic_give，
     #   严禁在这里直接写 microphone.capture（见下方「麦克风总线仲裁」注释）。
+    # ⚠ 功放 PA 不在这里直接开：起播瞬间时钟/偏置没稳就开 PA 会"嘎"一声爆音，
+    #   改由 100ms 巡检按「喇叭驱动已 RUNNING 再等 80ms」的时序打开（见 interval 段）。
     on_play:
-      - switch.turn_on: pa_en       # 先开功放再出声
+      - lambda: 'id(pa_want) = true;'
       - script.execute: mic_give
     # 公告/TTS 走这条：它在播报管线启动的瞬间就触发（早于喇叭抢锁），
     #   所以 Mic Monitor 开着时 TTS 也能立刻让路
     on_announcement:
-      - switch.turn_on: pa_en
+      - lambda: 'id(pa_want) = true;'
       - script.execute: mic_give
     on_idle:
-      - delay: 150ms                # 等尾音放完再关，避免"咔"声
-      - switch.turn_off: pa_en
+      # 音频已放完（缓冲已排空），功放交给巡检关，尾音不会被切
+      - lambda: 'id(pa_want) = false;'
       # 播放结束后，如果「Mic Monitor」开关还开着，自动恢复采集（mic_take 自带去重）
       - delay: 400ms
       - if:
@@ -616,6 +618,8 @@ voice_assistant:
     - logger.log:
         format: "VA: error code=%s msg=%s"
         args: ["code.c_str()", "message.c_str()"]
+    # 出错时可能等不到 media_player 的 on_idle，顺手清掉功放请求，别让 PA 常开
+    - lambda: 'id(pa_want) = false;'
 
 # ==========================================================
 # 麦克风总线仲裁（I2S 只有一条总线，麦克风与喇叭互斥）
@@ -941,6 +945,46 @@ interval:
           then:
             - script.execute: mic_give
 
+  # ----------------------------------------------------------
+  # 功放（FM8002E，IO1 低有效）开关时序 —— 消除起播/切换时的"嘎"爆音
+  #   爆音成因：喇叭驱动起来的那一刻 I2S 时钟才开始跑，ES8311 DAC 的直流偏置
+  #     与输出耦合电容要从 0 充到 VDD/2，这个阶跃如果被功放放大就是"嘎"一声。
+  #   对策：① 播放期间 pa_want=true，但 PA 先不开；
+  #         ② 等 spk_out 真正进入 RUNNING（i2s_channel_enable 完成、时钟在跑）后
+  #            再等 80ms，让偏置/耦合建立；
+  #         ③ 这时才开 PA —— 功放看到的输入已经是稳定直流，不放大阶跃 → 无爆音。
+  #   代价：起播头 80ms 听不到（约一个音节），换掉爆音是值得的。
+  #   关：驱动一停（is_stopped）立即关 PA，避免无声时功放持续放底噪。
+  # ----------------------------------------------------------
+  - interval: 100ms
+    then:
+      - lambda: |-
+          if (!id(pa_want)) {
+            // 只关自己开的，HA 里手动点开的 PA 不去干预
+            if (id(pa_owned) && id(pa_en).state) id(pa_en).turn_off();
+            id(pa_owned) = false;
+            id(pa_run_ms) = 0;
+            return;
+          }
+          if (!id(spk_out).is_running()) {
+            // 还没起来（STARTING）就继续等；已经停了就把计时清零并关 PA
+            if (id(spk_out).is_stopped()) {
+              id(pa_run_ms) = 0;
+              if (id(pa_owned) && id(pa_en).state) id(pa_en).turn_off();
+              id(pa_owned) = false;
+            }
+            return;
+          }
+          if (id(pa_run_ms) == 0) {
+            id(pa_run_ms) = millis();   // 刚进入 RUNNING，开始计时
+            return;
+          }
+          if (millis() - id(pa_run_ms) >= 80 && !id(pa_en).state) {
+            id(pa_en).turn_on();
+            id(pa_owned) = true;
+            ESP_LOGD("audio", "PA on (driver running for 80ms)");
+          }
+
 debug:
   id: dbg_comp
   update_interval: 10s      # 数据刷新周期（loop_time / free 共用）
@@ -1231,6 +1275,20 @@ globals:
     type: uint32_t
     restore_value: false
     initial_value: '0'
+
+  # ---- 功放开机时序（消除起播"嘎"的爆音）----
+  - id: pa_want            # 是否有播放任务（on_play/on_announcement 置 true，on_idle 置 false）
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: pa_run_ms          # 喇叭驱动进入 RUNNING 的时刻（0=还没起来），用于 80ms 延时
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: pa_owned           # PA 是否由本时序打开（true 才由它关，避免覆盖 HA 里手动开关）
+    type: bool
+    restore_value: false
+    initial_value: 'false'
 
 # ==========================================================
 # 本机传感器（与 HA 无关，始终可用）
@@ -1769,7 +1827,8 @@ select:
 
 switch:
   # 功放使能：GPIO1 低电平有效 → inverted:true 让 ON = 输出低 = 功放开
-  #   由 media_player 的 on_play / on_idle 自动控制，HA 里也可见
+  #   不直接跟随 on_play：由 100ms 巡检按「驱动 RUNNING 后再等 80ms」的时序开关，
+  #   否则起播/切换瞬间会"嘎"一声爆音（详见 interval 段「功放开机时序」）
   - platform: gpio
     id: pa_en
     name: "Speaker PA"

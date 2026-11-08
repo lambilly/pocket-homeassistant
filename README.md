@@ -211,6 +211,7 @@ CHANGELOG.md                 更新日志（旧项目线的版本记录）
 - **I2S 总线是独占的**：`i2s_audio` 用一把互斥锁，喇叭 `try_lock()` 抢不到就每秒重试（日志 `Parent bus is busy`），麦克风采集期间一直持锁 → 两者不能同时用。配置里用 `switch.mic_monitor` 显式启停采集（默认 OFF，音乐优先），并在播放/语音助手回复前后自动让路；`sound_level` 用 `passive: true` 避免常开麦。
 - **采集启停必须走 `script.mic_take` / `script.mic_give`**：麦克风用「监听槽计数」管理（`MAX_LISTENERS=16`），每次 `microphone.capture` 占 1 槽、`stop_capture` 还 1 槽，16 槽全还才真正停驱动并释放总线。重复 capture 会让麦永久占线，表现为「TTS 播过一次，之后再也放不出声」。`mic_give` 会在麦未停时补还一个槽（计数封顶 16，多还无害），属于自愈手段。
 - `media_player.on_play` 只在音频真正开始播放（state → PLAYING）时才触发，总线被占时永远等不到——所以它只当兜底；TTS 靠 `on_announcement`（播报管线启动瞬间就触发），音乐靠 400ms 巡检看门狗（喇叭卡在 STARTING 就让路）。
+- **功放 PA（IO1）不在播放回调里直接开**：驱动起来那一刻 ES8311 的 DAC 偏置/耦合电容还在爬升，直接开 PA 会"嘎"一声。改由 100ms 巡检按「`spk_out` 进入 RUNNING 后再等 80ms」打开，`pa_owned` 保证不覆盖 HA 里手动开关的 PA。
 - ESPHome 已移除 ADF 的 AEC，**播报会被自己的麦收进去**：音量压到 60% 以下，或播报期间暂停采集。
 - `voice_assistant` 的 `microphone` 与 `speaker`/`media_player` 输出互斥（只能选一个输出）；STT 与 TTS 在 HA 侧 pipeline 里配，设备侧只负责采集与播放。
 - 没有唤醒词时用 HA 的 `assist_satellite.start_conversation` 触发对话。
