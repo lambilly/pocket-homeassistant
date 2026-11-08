@@ -33,7 +33,7 @@ mqtt:
             'payload': value} | tojson }}
       qos: 1
       device:
-        identifiers: [ha_monitor_display_remote]
+        identifiers: [pkha_remote]
         name: "PKHA Remote"
 
 input_text:

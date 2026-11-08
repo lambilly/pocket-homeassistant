@@ -24,9 +24,12 @@
 #   · cmd 主题 retain，所以设备重启/重连会重放最后一次下发的值，
 #     即「重启后以 HA 侧为准」。
 #   · unique_id 稳定不可改；display name 改动只影响显示与 entity_id 生成。
-#   · 设备 identifiers 沿用 `ha_monitor_display_remote`——这是**刻意保留的兼容标识**：
-#     改了等于在 HA 里新建一台设备，已生成的 entity_id 与历史数据会断掉。
-#     （显示名是 PKHA Remote，不影响日常使用。全新安装可自行改成 pkha_remote。）
+#   · 设备 identifiers 为 `pkha_remote`（v3.5 起统一改为本项目名，不再沿用旧项目
+#     `ha_monitor_display_remote`，避免后来人看到标识以为是另一台设备）。
+#     代价：HA 里会新建一条「PKHA Remote」设备记录，旧记录变成没有实体的残留，
+#     在「设置 → 设备与服务 → MQTT」里手动删一次即可。
+#     收益：unique_id 未变，所以实体 ID（number.pkha_remote_brightness 等）、
+#     历史数据、卡片引用都不受影响。
 # ==========================================================
 
 mqtt:
@@ -43,7 +46,7 @@ mqtt:
       retain: true
       qos: 1
       device:
-        identifiers: [ha_monitor_display_remote]
+        identifiers: [pkha_remote]
         name: "PKHA Remote"
 
   number:
@@ -62,7 +65,7 @@ mqtt:
       retain: true
       qos: 1
       device:
-        identifiers: [ha_monitor_display_remote]
+        identifiers: [pkha_remote]
         name: "PKHA Remote"
 
     # 熄屏超时（秒），设备端范围 15~900
@@ -80,7 +83,7 @@ mqtt:
       retain: true
       qos: 1
       device:
-        identifiers: [ha_monitor_display_remote]
+        identifiers: [pkha_remote]
         name: "PKHA Remote"
 
   switch:
@@ -96,7 +99,7 @@ mqtt:
       retain: true
       qos: 1
       device:
-        identifiers: [ha_monitor_display_remote]
+        identifiers: [pkha_remote]
         name: "PKHA Remote"
 
     # 收到通知时是否点亮屏幕（默认关，省电优先）
@@ -111,5 +114,5 @@ mqtt:
       retain: true
       qos: 1
       device:
-        identifiers: [ha_monitor_display_remote]
+        identifiers: [pkha_remote]
         name: "PKHA Remote"
