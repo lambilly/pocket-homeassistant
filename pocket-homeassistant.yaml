@@ -442,10 +442,15 @@ web_server:
 # 屏幕硬件配置（ES3C35P：ST77922 QSPI 屏 + 内置触摸 I2C 0x55）
 # ==========================================================
 external_components:
+  # st77922_touch：本板触摸自写组件
+  # i2c：官方组件的本地修补版。官方 i2c 的 recover_() 在 setup() 阶段会调用
+  #      App.feed_wdt()，此时 Application 内部队列尚未初始化 → xQueueSemaphoreTake(NULL)
+  #      assert 崩溃。冷启动时触摸 IC 把 SCL 拉低即必然触发 → 无限重启（屏全黑但 MQTT 偶发在线）。
+  #      修补内容见 components/i2c/i2c_bus_esp_idf.cpp 里的 PATCH 注释。
   - source:
       type: local
       path: components
-    components: [st77922_touch]
+    components: [st77922_touch, i2c]
 
 spi:
   id: display_spi
