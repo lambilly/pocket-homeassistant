@@ -536,31 +536,26 @@ media_player:
     volume_initial: 0.6
     task_stack_in_psram: true       # 解码任务栈放 PSRAM，给 LVGL 腾内部 RAM
     # ⚠ I2S 总线是独占的：麦克风采集中，喇叭 try_lock 会失败并每秒重试
-    #   （日志 "Parent bus is busy"）。所以播放一开始就主动放开麦克风。
+    #   （日志 "Parent bus is busy"）。所有采集/让路统一走 script.mic_take / mic_give，
+    #   严禁在这里直接写 microphone.capture（见下方「麦克风总线仲裁」注释）。
     on_play:
       - switch.turn_on: pa_en       # 先开功放再出声
-      - if:
-          condition:
-            lambda: 'return id(mic_in).is_running();'
-          then:
-            - microphone.stop_capture: mic_in
+      - script.execute: mic_give
+    # 公告/TTS 走这条：它在播报管线启动的瞬间就触发（早于喇叭抢锁），
+    #   所以 Mic Monitor 开着时 TTS 也能立刻让路
     on_announcement:
       - switch.turn_on: pa_en
-      - if:
-          condition:
-            lambda: 'return id(mic_in).is_running();'
-          then:
-            - microphone.stop_capture: mic_in
+      - script.execute: mic_give
     on_idle:
       - delay: 150ms                # 等尾音放完再关，避免"咔"声
       - switch.turn_off: pa_en
-      # 播放结束后，如果「Mic Monitor」开关还开着，自动恢复采集
+      # 播放结束后，如果「Mic Monitor」开关还开着，自动恢复采集（mic_take 自带去重）
       - delay: 400ms
       - if:
           condition:
             - switch.is_on: mic_monitor
           then:
-            - microphone.capture: mic_in
+            - script.execute: mic_take
 
 # ==========================================================
 # 麦克风：ES8311 ADC → I2S DIN(IO16) → ESP32
@@ -606,24 +601,38 @@ voice_assistant:
         format: "VA: stt_end -> %s"
         args: ["x.c_str()"]
   # 回复音频要播之前先放开麦克风，否则喇叭抢不到 I2S 总线（回复会没声音）
+  #   ⚠ 必须走 mic_give：它除了归还本机占的槽，还会补还历史上残留的槽
   on_tts_start:
-    - if:
-        condition:
-          lambda: 'return id(mic_in).is_running();'
-        then:
-          - microphone.stop_capture: mic_in
-  # 一轮对话结束，如果监测开关还开着就恢复采集
+    - script.execute: mic_give
+  # 一轮对话结束，如果监测开关还开着就恢复采集（mic_take 自带去重，不会重复占槽）
   on_end:
     - if:
         condition:
           - switch.is_on: mic_monitor
         then:
           - delay: 400ms
-          - microphone.capture: mic_in
+          - script.execute: mic_take
   on_error:
     - logger.log:
         format: "VA: error code=%s msg=%s"
         args: ["code.c_str()", "message.c_str()"]
+
+# ==========================================================
+# 麦克风总线仲裁（I2S 只有一条总线，麦克风与喇叭互斥）
+#   ⚠ 踩过的坑：ESPHome 的 i2s 麦克风用「监听槽计数」启停（MAX_LISTENERS=16），
+#      每次 microphone.capture 占 1 个槽、stop_capture 还 1 个，
+#      必须 16 个槽全归还，麦克风才真正停驱动、unlock 那条 I2S 总线。
+#      之前 on_idle 和 VA on_end 各 capture 一次 → 多占槽 → 以后只 stop 一次还不清
+#      → 麦克风永远在跑、永远独占总线 → 日志 "Parent bus is busy" 每秒重试
+#      → 现象就是「TTS 播过一次，之后再也放不出声」。
+#   对策：
+#     ① 所有采集/让路只走 mic_take / mic_give，capture 用 mic_held 去重（绝不重复占槽）；
+#     ② stop_capture 多还几次是安全的（槽计数封顶 16，多还无效），
+#        所以 mic_give 会在麦克风还没停时再补一枪，把历史残留的槽也清掉；
+#     ③ interval 每 400ms 巡检：喇叭卡在 STARTING（抢锁失败重试中）而麦克风还在跑，
+#        就主动让路 —— 这样即使 Mic Monitor 开着，音乐/TTS 也能在 2 秒内出声。
+#   实现：script.mic_take / mic_give 定义在文件末尾的 script: 段（约 1980 行）
+# ==========================================================
 
 output:
   - platform: ledc
@@ -914,6 +923,24 @@ interval:
           id(pwr_ref_ms) = now;
           ESP_LOGD("power", "bat %.2fV st=%d dv=%.3f", v, id(power_state), dv);
 
+  # ----------------------------------------------------------
+  # 喇叭抢 I2S 总线看门狗
+  #   spk_out 卡在 STARTING（is_stopped=false 且 is_running=false）说明驱动起不来，
+  #   十有八九是麦克风还占着总线（Mic Monitor 开着 / 语音助手在采）。
+  #   此时主动让路，喇叭 1 秒后的重试就能成功 → 音乐/TTS 照常出声。
+  #   1.5s 缓冲：on_idle 恢复采集会和喇叭 STOPPING 短暂重叠，别刚开麦就掐掉。
+  # ----------------------------------------------------------
+  - interval: 400ms
+    then:
+      - if:
+          condition:
+            and:
+              - lambda: 'return !id(spk_out).is_stopped() && !id(spk_out).is_running();'
+              - lambda: 'return !id(mic_in).is_stopped();'
+              - lambda: 'return millis() - id(mic_take_ms) > 1500;'
+          then:
+            - script.execute: mic_give
+
 debug:
   id: dbg_comp
   update_interval: 10s      # 数据刷新周期（loop_time / free 共用）
@@ -1191,6 +1218,16 @@ globals:
     restore_value: false
     initial_value: '0'
   - id: pwr_ref_ms         # 参考点时刻
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+
+  # ---- 麦克风总线仲裁（见 script.mic_take / mic_give）----
+  - id: mic_held           # 本机（Mic Monitor）是否正持有 1 个麦克风监听槽
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: mic_take_ms        # 最近一次开麦的时刻，给看门狗留「刚开麦别马上掐」的缓冲
     type: uint32_t
     restore_value: false
     initial_value: '0'
@@ -1747,7 +1784,8 @@ switch:
   #   ⚠ 与喇叭互斥：ESP32 只有一条 I2S 总线，麦克风采集时会独占锁，
   #     喇叭取不到锁就每秒重试（Parent bus is busy）→ 放不出声。
   #   默认 OFF（音乐优先）。打开后 sound_level 每 1 秒出一次 RMS；
-  #   播放开始/结束、语音助手回复前后会自动让路与恢复。
+  #   播放开始（含 HA 播报/音乐）会自动让路，播放结束自动恢复，
+  #   全部经 script.mic_take / mic_give 统一管理，不会重复占监听槽。
   - platform: template
     id: mic_monitor
     name: "Mic Monitor"
@@ -1755,9 +1793,9 @@ switch:
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     turn_on_action:
-      - microphone.capture: mic_in
+      - script.execute: mic_take
     turn_off_action:
-      - microphone.stop_capture: mic_in
+      - script.execute: mic_give
 
   # 自动休眠总开关（关掉后常亮，适合调试/演示）
   - platform: template
@@ -1903,6 +1941,48 @@ script:
                      id(ui_auto_sleep_enabled) ? "true" : "false",
                      id(notify_wake_on_msg).state ? "true" : "false");
             return std::string(buf);
+
+  # ----------------------------------------------------------
+  # 麦克风总线仲裁（I2S 只有一条总线，麦与喇叭互斥）
+  #   为什么必须集中管理：
+  #     ESPHome 的 i2s 麦克风用「监听槽计数」启停（MAX_LISTENERS=16）：
+  #     每次 microphone.capture 占 1 槽、stop_capture 还 1 槽，
+  #     16 个槽全部归还后麦克风才真正停驱动、unlock 那条 I2S 总线。
+  #     若同一轮里 capture 了两次（旧写法 on_idle 与 VA on_end 各来一次），
+  #     之后只 stop 一次还不清 → 麦克风永远在跑、永远独占总线
+  #     → 喇叭 try_lock 失败、日志 "Parent bus is busy" 每秒重试
+  #     → 现象「TTS 播过一次，之后再也放不出声」。
+  #   规则：
+  #     ① 任何地方都不许直接写 microphone.capture / stop_capture，
+  #        统一走 mic_take / mic_give（capture 用 mic_held 去重）；
+  #     ② stop_capture 多还是安全的（计数封顶 16，多还无效），
+  #        所以 mic_give 会在麦克风没停时补一枪，顺手清掉历史残留槽；
+  #     ③ 看门狗 interval 见上方 400ms 巡检段。
+  # ----------------------------------------------------------
+  - id: mic_take
+    mode: single            # 内部无 delay，实际不会重叠执行
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(mic_held);'
+          then:
+            - lambda: 'id(mic_held) = true; id(mic_take_ms) = millis();'
+            - microphone.capture: mic_in
+
+  - id: mic_give
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(mic_held);'
+          then:
+            - lambda: 'id(mic_held) = false;'
+      # 补枪：不管本机是否持有，只要麦克风还没停就再还一个槽（多还无害）
+      - if:
+          condition:
+            lambda: 'return !id(mic_in).is_stopped();'
+          then:
+            - microphone.stop_capture: mic_in
 
 # ==========================================================
 # 开关类实体（MQTT 数据帧落地）
