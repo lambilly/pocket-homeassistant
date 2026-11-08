@@ -483,10 +483,16 @@ audio_dac:
     sample_rate: 16000       # TTS 常用 16k，与 speaker 必须一致
     bits_per_sample: 16bit
     use_mclk: true           # ESP32 输出 MCLK = 256×16k = 4.096MHz
-    # 麦克风通路（2026-11-08 启用）：ES8311 ADC 上电，DIN=IO16 回传
-    #   增益八档枚举 0/6/12/18/24/30/36/42 dB；默认 42dB 对板载 MEMS 麦偏大，
+    # 麦克风通路：ES8311 ADC 上电，DIN=IO16 回传
+    #   ⚠ 这一位必须保持 false！ESPHome 的 use_microphone 不是"启停麦克风"，
+    #     它对应 REG14 bit6 = 选择 DMIC（PDM 数字麦）输入：
+    #       reg14 = 0x1A;  if (use_mic) reg14 |= BIT(6);   // 源码注释：Enable PDM digital microphone
+    #     本板麦是 LMA2718B381-OA7（OA = Analog Output）模拟麦，走 MIC1P/MIC1N 差分模拟输入。
+    #     置 true 会切到 PDM 通路 → ADC 全 0 → RMS 恒定 -96.3dBFS。
+    #     模拟通路由 setup() 无条件打开（REG0D/REG0E/REG1C），不依赖这个开关。
+    use_microphone: false
+    # 增益八档枚举 0/6/12/18/24/30/36/42 dB；默认 42dB 对板载 MEMS 麦偏大，
     #   先从 24dB 起（拍手应明显到 -20dBFS 左右，削顶就再降一档）
-    use_microphone: true
     mic_gain: 24DB
 
 speaker:
