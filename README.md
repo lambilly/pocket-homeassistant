@@ -14,7 +14,7 @@
 - **熄屏休眠**：超时 15~900 s 可调，触摸 / BOOT 键唤醒；收到通知可配置为自动亮屏并直跳通知页
 - **亮度与配色**：背光 PWM 0~100% 可调、断电记忆；每页底色 8 档可选（HA 下拉切换，无需重启）
 - **电池状态**：IO8 ADC 采样电压 → 电量百分比；标题栏按供电状态切换图标（电池 / 闪电），供电/充电状态由电压趋势推断
-- **语音播报**：HA 里出现 `media_player.pocket_speaker`，TTS / 提示音直接推到板载喇叭；功放自动开关（播放前使能，结束后延迟 150 ms 关闭）
+- **语音播报 + 语音助手**：HA 里出现 `media_player.pocket_speaker`，TTS / 提示音直接推到板载喇叭；`voice_assistant` 接 HA Assist（STT/意图/TTS 全在 HA 侧），板载麦克风采集。功放自动开关（播放前使能，结束后延迟 150 ms 关闭）
 - **远程控制**：屏幕带出门（HA 连不到设备）时，仍可通过 MQTT 改开关屏 / 亮度 / 熄屏超时 / 自动休眠 / 通知亮屏
 
 ## 硬件
@@ -204,6 +204,13 @@ CHANGELOG.md                 更新日志（旧项目线的版本记录）
 - 只有一个 `switch:` / `sensor:` 顶层键；新增设备要并进已有段，否则 YAML duplicate key。
 - `ota:` 段的空 `encryption:` 块 = "必须加密且密钥继承 `api.key`"；从旧版明文 OTA 升级过来要先 USB 刷一次。
 
+**麦克风 / 语音助手**
+
+- 麦克风与喇叭共用同一条 `i2s_audio` 总线（S3 全双工），三处采样率必须一致（16 kHz）；`mic_gain` 只有 0/6/12/18/24/30/36/42 八档，板载 MEMS 麦从 24DB 起。
+- ESPHome 已移除 ADF 的 AEC，**播报会被自己的麦收进去**：音量压到 60% 以下，或播报期间暂停采集。
+- `voice_assistant` 的 `microphone` 与 `speaker`/`media_player` 输出互斥（只能选一个输出）；STT 与 TTS 在 HA 侧 pipeline 里配，设备侧只负责采集与播放。
+- 没有唤醒词时用 HA 的 `assist_satellite.start_conversation` 触发对话。
+
 ## 文档索引
 
 - [CHANGELOG.md](CHANGELOG.md) — 版本更新日志（含旧屏 v0.9 ~ v2.2 的历史）
@@ -215,7 +222,7 @@ CHANGELOG.md                 更新日志（旧项目线的版本记录）
 
 ## 待做
 
-- 麦克风（ES8311 ADC → `microphone`），用于 HA 语音助手 / 噪音监测
+- 本地唤醒词（microWakeWord）：模型占数 MB，且与 LVGL 抢 CPU，语音助手目前靠 HA 触发
 - TF 卡（SDIO 四位）：ESPHome 官方无组件，需外部组件 + framework 选项调整
 - 扩展口传感器（I2C 温湿度 / 光照，UART 空气质量 / 毫米波）
 - 供电状态 100% 判定：需从 TP4054 CHRG 脚飞线到 IO45、USB 5V 分压到 IO46

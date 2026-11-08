@@ -483,7 +483,11 @@ audio_dac:
     sample_rate: 16000       # TTS 常用 16k，与 speaker 必须一致
     bits_per_sample: 16bit
     use_mclk: true           # ESP32 输出 MCLK = 256×16k = 4.096MHz
-    use_microphone: false    # 第一轮先只跑播放；MIC 第二轮再开
+    # 麦克风通路（2026-11-08 启用）：ES8311 ADC 上电，DIN=IO16 回传
+    #   增益八档枚举 0/6/12/18/24/30/36/42 dB；默认 42dB 对板载 MEMS 麦偏大，
+    #   先从 24dB 起（拍手应明显到 -20dBFS 左右，削顶就再降一档）
+    use_microphone: true
+    mic_gain: 24DB
 
 speaker:
   - platform: i2s_audio
@@ -532,6 +536,54 @@ media_player:
     on_idle:
       - delay: 150ms                # 等尾音放完再关，避免"咔"声
       - switch.turn_off: pa_en
+
+# ==========================================================
+# 麦克风：ES8311 ADC → I2S DIN(IO16) → ESP32
+#   与喇叭共用同一条 i2s_bus（ESP32-S3 支持 TX/RX 全双工，采样率必须一致）
+#   输入侧只有一路，单声道；ES8311 的 MIC 接在左声道
+# ==========================================================
+microphone:
+  - platform: i2s_audio
+    id: mic_in
+    i2s_audio_id: i2s_bus
+    adc_type: external            # 音频由 ES8311 ADC 出来，不是 S3 内置 ADC
+    i2s_din_pin: GPIO16           # 板载固定走线
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: left
+
+# ==========================================================
+# HA 语音助手（Assist）
+#   链路：mic_in → ESP32 → Native API → HA pipeline(STT/意图/TTS) → pocket_media 播报
+#   STT/意图/TTS 全在 HA 侧跑，设备只做采集与播放
+#   触发方式：HA 里 assist_satellite 实体「开始对话」（暂不用唤醒词，
+#             唤醒词 microWakeWord 会占几 MB 模型并与 LVGL 抢 CPU，放到下一档）
+#   注意：喇叭出声会被自己的麦收进去（ESPHome 无 AEC），
+#         播报音量建议 ≤60%，或播报时暂停采集
+# ==========================================================
+voice_assistant:
+  id: va
+  microphone:
+    microphone: mic_in
+    gain_factor: 4                # 软件增益 1~64（1 = 原始，4 = +12dB）
+    bits_per_sample: 16
+    channels: 0                   # 0 = 左声道
+  media_player: pocket_media      # 与 speaker 互斥，二选一；这里复用已配好的喇叭
+  use_wake_word: false
+  noise_suppression_level: 2      # 0~4，2 = 中等降噪
+  auto_gain: 0dBFS                # 0 = 关闭自动增益（mic_gain 已在 codec 侧给足）
+  volume_multiplier: 1.0
+  conversation_timeout: 120s
+  on_listening:
+    - logger.log: "VA: listening"
+  on_stt_end:
+    - logger.log:
+        format: "VA: stt_end -> %s"
+        args: ["x.c_str()"]
+  on_error:
+    - logger.log:
+        format: "VA: error code=%s msg=%s"
+        args: ["code.c_str()", "message.c_str()"]
 
 output:
   - platform: ledc
@@ -1143,6 +1195,22 @@ sensor:
       - lambda: |-
           float p = (x - 3.30f) / (4.20f - 3.30f) * 100.0f;
           return clamp(p, 0.0f, 100.0f);
+
+  # ==========================================================
+  # 麦克风电平（验证 MIC 通路用）
+  #   说话/拍手时 RMS 应明显上升；长期贴在 -90dB 说明 ADC 没开或增益过低
+  #   passive: false = 主动按 measurement_duration 连续采样（会占用 I2S 输入）
+  #   验证通过后可把 passive 改 true / 或整段注释掉，减少 CPU 占用
+  # ==========================================================
+  - platform: sound_level
+    id: mic_level
+    microphone:
+      microphone: mic_in
+    passive: false
+    measurement_duration: 1000ms
+    rms:
+      id: mic_rms
+      name: "Pocket Mic RMS"
 
   # loop_time / free 只能写在 platform: debug 下（由顶层 debug: 组件接管）
   - platform: debug
