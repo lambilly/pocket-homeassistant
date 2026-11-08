@@ -596,18 +596,26 @@ voice_assistant:
   auto_gain: 0dBFS                # 0 = 关闭自动增益（mic_gain 已在 codec 侧给足）
   volume_multiplier: 1.0
   conversation_timeout: 120s
+  on_start:
+    - lambda: 'id(led_va) = 1;'          # 状态灯：聆听
   on_listening:
     - logger.log: "VA: listening"
+    - lambda: 'id(led_va) = 1;'
   on_stt_end:
     - logger.log:
         format: "VA: stt_end -> %s"
         args: ["x.c_str()"]
+    - lambda: 'id(led_va) = 2;'          # 状态灯：思考（等意图/回复）
   # 回复音频要播之前先放开麦克风，否则喇叭抢不到 I2S 总线（回复会没声音）
   #   ⚠ 必须走 mic_give：它除了归还本机占的槽，还会补还历史上残留的槽
   on_tts_start:
     - script.execute: mic_give
+    - lambda: 'id(led_va) = 3;'          # 状态灯：说话
+  on_tts_end:
+    - lambda: 'id(led_va) = 0;'
   # 一轮对话结束，如果监测开关还开着就恢复采集（mic_take 自带去重，不会重复占槽）
   on_end:
+    - lambda: 'id(led_va) = 0;'
     - if:
         condition:
           - switch.is_on: mic_monitor
@@ -619,7 +627,10 @@ voice_assistant:
         format: "VA: error code=%s msg=%s"
         args: ["code.c_str()", "message.c_str()"]
     # 出错时可能等不到 media_player 的 on_idle，顺手清掉功放请求，别让 PA 常开
-    - lambda: 'id(pa_want) = false;'
+    - lambda: |-
+        id(pa_want) = false;
+        id(led_va) = 0;
+        id(led_err_until) = millis() + 3000;   // 状态灯：红闪 3 秒
 
 # ==========================================================
 # 麦克风总线仲裁（I2S 只有一条总线，麦克风与喇叭互斥）
@@ -654,7 +665,11 @@ light:
     # ALWAYS_OFF：开机不自带满亮点亮，由 lvgl on_boot 按 ui_saved_brightness（默认 60%）点亮，
     # 避免开机先全亮一秒再暗下来的闪变。休眠/唤醒见 script sleep_screen / wake_screen。
     restore_mode: ALWAYS_OFF
-  # 板载 WS2812 单灯（IO40）：联网/告警/低电状态指示，HA 可直接控制
+  # 板载 WS2812 单灯（IO40）：状态指示灯
+  #   颜色/动效由 interval 段「状态灯状态机」按优先级自动切换；
+  #   关掉 switch.status_led_auto 后即可在 HA 里手动控制这个灯（纯色/亮度）。
+  #   注意：pulse 只做亮度呼吸，颜色由状态机 set_red/green/blue 决定，
+  #        所以每个状态复用同一个 effect 名即可，不必为每种颜色各配一条。
   - platform: esp32_rmt_led_strip
     id: status_led
     name: "Status LED"
@@ -663,6 +678,54 @@ light:
     num_leds: 1
     channel_colors: GRB   # WS2812 实际顺序 GRB（rgb_order 是同义旧名，已废弃）
     restore_mode: ALWAYS_OFF
+    effects:
+      # 慢呼吸：极暗的在线呼吸灯（不扰人，适合床头）
+      - pulse:
+          name: led_breathe_slow
+          transition_length: 2s
+          update_interval: 2s
+          min_brightness: 0%
+          max_brightness: 22%
+      # 中速呼吸：思考/说话/充电
+      - pulse:
+          name: led_breathe_mid
+          transition_length: 1100ms
+          update_interval: 1100ms
+          min_brightness: 5%
+          max_brightness: 65%
+      # 快呼吸：聆听中 / 开机连网
+      - pulse:
+          name: led_breathe_fast
+          transition_length: 350ms
+          update_interval: 400ms
+          min_brightness: 12%
+          max_brightness: 100%
+      # 红色快闪：语音助手出错（3 秒后自动回退）
+      - strobe:
+          name: led_blink_red_fast
+          colors:
+            - state: true
+              brightness: 100%
+              red: 100%
+              green: 0%
+              blue: 0%
+              duration: 90ms
+            - state: true
+              brightness: 0%
+              duration: 160ms
+      # 红色慢闪：电池低于 15%
+      - strobe:
+          name: led_blink_red_slow
+          colors:
+            - state: true
+              brightness: 100%
+              red: 100%
+              green: 0%
+              blue: 0%
+              duration: 120ms
+            - state: true
+              brightness: 0%
+              duration: 1300ms
 
 display:
   - platform: mipi_spi
@@ -985,6 +1048,101 @@ interval:
             ESP_LOGD("audio", "PA on (driver running for 80ms)");
           }
 
+  # ----------------------------------------------------------
+  # 板载 WS2812 状态灯（IO40）
+  #   优先级（高 → 低）：出错红闪 > 聆听 > 思考 > 说话 > 充电 > 低电
+  #                     > 断网 > 未读通知 > Mic Monitor > 熄屏熄灭 > 在线待机
+  #   只在「灯态变化」时才下发一次 light call：
+  #     · 呼吸/闪烁由 light effect 自己在输出层做（pulse/strobe 内部 set_publish(false)），
+  #       不会每帧往 HA/MQTT 发状态；
+  #     · 250ms 巡检只负责比对编号，静默时零开销。
+  #   关掉 switch.status_led_auto 后本段直接 return，灯交给 HA 手动控制。
+  # ----------------------------------------------------------
+  - interval: 250ms
+    then:
+      - lambda: |-
+          if (!id(status_led_auto).state) return;
+
+          const uint32_t now = millis();
+          const bool screen_off = id(ui_screen_off);
+
+          // 灯态编号（和下面 switch 保持一致）
+          const int ST_OFF = 0, ST_BOOT = 1, ST_MIC = 2, ST_UNREAD = 3, ST_CHARGING = 4,
+                    ST_SPEAK = 5, ST_THINK = 6, ST_LISTEN = 7, ST_LOWBAT = 8,
+                    ST_OFFLINE = 9, ST_ERR = 10, ST_IDLE = 11;
+
+          // ① 语音助手阶段（除出错红闪外优先级最高）
+          int s = -1;
+          if (id(led_err_until) != 0) {
+            if ((int32_t) (id(led_err_until) - now) > 0) s = ST_ERR;
+            else id(led_err_until) = 0;
+          }
+          if (s < 0) {
+            if (id(led_va) == 1)      s = ST_LISTEN;
+            else if (id(led_va) == 2) s = ST_THINK;
+            else if (id(led_va) == 3) s = ST_SPEAK;
+          }
+
+          // ② 环境状态
+          const float pct = id(bat_pct).state;
+          const bool charging = (id(power_state) == 2 || id(power_state) == 3);
+          const bool wifi_ok = wifi::global_wifi_component != nullptr &&
+                               wifi::global_wifi_component->is_connected();
+          const bool api_ok = api::global_api_server != nullptr &&
+                              api::global_api_server->is_connected();
+          const bool mqtt_ok = mqtt::global_mqtt_client != nullptr &&
+                               mqtt::global_mqtt_client->is_connected();
+
+          if (s < 0) {
+            if (charging) s = ST_CHARGING;
+            else if (std::isfinite(pct) && pct < 15.0f && id(power_state) == 1) s = ST_LOWBAT;
+            else if (!wifi_ok) s = ST_BOOT;              // 开机 / 掉 WiFi：白灯快呼吸
+            else if (!api_ok && !mqtt_ok) s = ST_OFFLINE; // 有 WiFi 但两条通道都断
+            else if (ns_notify::unread > 0) s = ST_UNREAD;
+            else if (id(mic_monitor).state) s = ST_MIC;
+            else if (screen_off) s = ST_OFF;             // 熄屏后不打扰：灭灯
+            else s = ST_IDLE;
+          }
+
+          if (s == id(led_state)) return;   // 灯态没变 → 什么都不做
+          id(led_state) = (int8_t) s;
+
+          if (s == ST_OFF) {
+            id(status_led).make_call().set_state(false).perform();
+            return;
+          }
+
+          float r = 0.0f, g = 0.0f, b = 0.0f, bri = 1.0f;
+          const char *eff = nullptr;
+          switch (s) {
+            case ST_BOOT:      r = 1.00f; g = 1.00f; b = 1.00f; eff = "led_breathe_fast"; break;  // 白
+            case ST_MIC:       r = 0.55f; g = 0.55f; b = 1.00f;                                 // 冷白常亮
+                               bri = screen_off ? 0.10f : 0.35f; eff = nullptr; break;
+            case ST_UNREAD:    r = 1.00f; g = 0.65f; b = 0.00f; eff = "led_breathe_slow"; break;  // 琥珀
+            case ST_CHARGING:  r = 1.00f; g = 0.35f; b = 0.00f;                                  // 橙
+                               eff = screen_off ? "led_breathe_slow" : "led_breathe_mid"; break;
+            case ST_SPEAK:     r = 0.00f; g = 0.85f; b = 0.25f; eff = "led_breathe_mid"; break;   // 绿
+            case ST_THINK:     r = 0.15f; g = 0.35f; b = 1.00f; eff = "led_breathe_mid"; break;   // 蓝
+            case ST_LISTEN:    r = 0.00f; g = 0.90f; b = 0.85f; eff = "led_breathe_fast"; break;  // 青
+            case ST_LOWBAT:    r = 1.00f; g = 0.00f; b = 0.00f; eff = "led_blink_red_slow"; break;
+            case ST_OFFLINE:   r = 0.60f; g = 0.00f; b = 0.80f; eff = "led_breathe_slow"; break;  // 紫
+            case ST_ERR:       r = 1.00f; g = 0.00f; b = 0.00f; eff = "led_blink_red_fast"; break;
+            case ST_IDLE:
+            default:           r = 0.00f; g = 0.75f; b = 0.55f; eff = "led_breathe_slow"; break;  // 暗青
+          }
+
+          auto call = id(status_led).make_call();
+          call.set_state(true);
+          call.set_color_mode(light::ColorMode::RGB);
+          call.set_red(r);
+          call.set_green(g);
+          call.set_blue(b);
+          call.set_brightness(bri);
+          if (eff == nullptr) call.set_effect("");   // 空串 = 关特效（纯常亮）
+          else call.set_effect(eff);
+          call.set_transition_length(0);
+          call.perform();
+
 debug:
   id: dbg_comp
   update_interval: 10s      # 数据刷新周期（loop_time / free 共用）
@@ -1289,6 +1447,20 @@ globals:
     type: bool
     restore_value: false
     initial_value: 'false'
+
+  # ---- 板载 WS2812 状态灯（IO40，见 interval「状态灯状态机」）----
+  - id: led_state          # 当前已应用的灯态编号（-1 = 还没应用过，开机强制刷一次）
+    type: int8_t
+    restore_value: false
+    initial_value: '-1'
+  - id: led_va             # 语音助手阶段：0=空闲 1=聆听 2=思考 3=说话
+    type: int8_t
+    restore_value: false
+    initial_value: '0'
+  - id: led_err_until      # 语音助手出错的红闪要持续到的时刻（0 = 无错误）
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
 
 # ==========================================================
 # 本机传感器（与 HA 无关，始终可用）
@@ -1856,6 +2028,22 @@ switch:
     turn_off_action:
       - script.execute: mic_give
 
+  # 状态灯自动模式总开关（WS2812 IO40）
+  #   ON （默认）：按优先级自动显示 语音助手/充电/低电/断网/未读/待机 等灯态
+  #   OFF        ：停掉自动巡检，Status LED 可在 HA 里手动调颜色/亮度/特效
+  #   重新打开时会强制刷一次当前灯态（led_state 复位为 -1）。
+  - platform: template
+    id: status_led_auto
+    name: "Status LED Auto"
+    icon: mdi:led-on
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - lambda: 'id(led_state) = -1;'
+    turn_off_action:
+      - lambda: 'id(led_state) = -1;'
+
   # 自动休眠总开关（关掉后常亮，适合调试/演示）
   - platform: template
     id: auto_sleep_switch
@@ -1873,8 +2061,7 @@ switch:
       # 关闭自动休眠时顺便点亮，避免停在黑屏状态
       - script.execute: wake_screen
 
-  # 通知亮屏开关（v2.0 NOTIFY）
-  #   默认关：一次推送就唤醒屏幕，20mA 待机会瞬间回到 150mA+ 的亮屏功耗。
+  # 通知亮屏开关（v2.0 NOTIFY）  #   默认关：一次推送就唤醒屏幕，20mA 待机会瞬间回到 150mA+ 的亮屏功耗。
   #   打开后，收到通知且屏幕处于熄屏态时才点亮；亮屏中收到通知不受影响。
   - platform: template
     id: notify_wake_on_msg
