@@ -24,6 +24,9 @@
 #   · cmd 主题 retain，所以设备重启/重连会重放最后一次下发的值，
 #     即「重启后以 HA 侧为准」。
 #   · unique_id 稳定不可改；display name 改动只影响显示与 entity_id 生成。
+#   · 设备 identifiers 仍是 `ha_monitor_display_remote`——这是**故意冻结的**历史标识：
+#     改了等于在 HA 里新建一台设备，已生成的 entity_id 与历史数据会断掉。
+#     （显示名已是 PKHA Remote，不影响日常使用；旧屏包 monitor_display_*.yaml 已删除。）
 # ==========================================================
 
 mqtt:

@@ -115,7 +115,7 @@ web_password: your-web-password
 └── pocket_display_notify_bridge.yaml  通知桥接（屏幕 ↔ HA 通知页）
 ```
 
-`ha/` 下另有两个 Lovelace 卡片（`lovelace_pocket_control_card.yaml`、`lovelace_screen_control_card.yaml`）和两个 Node-RED 子流程导出（`NR子流程-屏幕推送-pocket.json` 等），按需导入。
+`ha/` 下另有一张 Lovelace 卡片（`lovelace_pocket_control_card.yaml`）和一份 Node-RED 子流程导出（`NR子流程-屏幕推送-pocket.json`），按需导入。
 
 ### 4. 编译烧录
 
@@ -170,7 +170,8 @@ ui/                          页面与公共资源
   tab_bar.yaml                 底部四键导航（四页共用同一份片段）
 components/st77922_touch/    自定义触摸组件（I2C 0x55，16 位寄存器，7 字节/点，FIFO 排空）
 include/                     notify_store.h 通知环形缓冲/折行/清洗 + notify_charset.h 缺字扫描结果
-fonts/                       NotoSansSC-SemiBold.ttf（UI）+ materialdesignicons-webfont.ttf（图标）
+fonts/                       NotoSansSC-SemiBold.ttf（UI 实际引用）+ materialdesignicons-webfont.ttf（图标）
+                             NotoSansSC-Regular.ttf 为备用字重，当前配置未引用
 sounds/                      alarm / ding / notify 三个 wav（本地音效素材，当前播报走 HA 推流）
 ha/                          HA 侧资源（→ /config/packages/ 部署）
   pocket_display_push.yaml         数据推送自动化（pkha_display_push）
@@ -179,12 +180,11 @@ ha/                          HA 侧资源（→ /config/packages/ 部署）
   pocket_display_notify_bridge.yaml 通知桥（pkha_notify_send / pkha_last_notify）
   lovelace_pocket_control_card.yaml 屏幕控制卡片（Lovelace）
   NR子流程-屏幕推送-pocket.json     Node-RED 推送子流程
-  monitor_display_*.yaml           旧屏（HA Monitor Display）遗留包，本项目不部署
 docs/                        硬件档案 / 触摸协议 / 音频方案 / 外设路线图
 reference/datasheet/         ES3C35P 规格书、原理图、IO 表、官方 quickstart
 test/display_test.yaml       早期点屏版本（字体路径按 test/ 目录写、未含 rotation/transform，仅作历史参考）
 3.5inch_ESP32-S3_快速使用手册.pdf  厂家中文手册
-CHANGELOG.md                 更新日志（旧项目线的版本记录）
+CHANGELOG.md                 更新日志（本仓库自 v3.0 起；v2.x 及更早见旧仓库）
 ```
 
 > `secrets.yaml`、`.esphome/`、`.workbuddy/` 不入库。`test/.esphome/` 是测试固件构建缓存。
@@ -240,7 +240,7 @@ CHANGELOG.md                 更新日志（旧项目线的版本记录）
 
 ## 文档索引
 
-- [CHANGELOG.md](CHANGELOG.md) — 版本更新日志（含旧屏 v0.9 ~ v2.2 的历史）
+- [CHANGELOG.md](CHANGELOG.md) — 版本更新日志（v3.0 起；旧屏 v0.9 ~ v2.2 见旧仓库）
 - `docs/硬件-ES3C35P引脚与驱动.md` — 官方引脚表、驱动约束、与原板的差异
 - `docs/触摸-ST77922.md` — 触摸寄存器协议、FIFO 排空、四角标定方法
 - `docs/音频-ES8311方案.md` — 音频链路、ES8311 配置、HA TTS 用法

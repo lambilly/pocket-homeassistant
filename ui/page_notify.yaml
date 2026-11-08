@@ -2,7 +2,7 @@
 # 页面 4：通知（v2.0 NOTIFY）—— 单条全屏 + 上下切换
 # ----------------------------------------------------------
 # 入口：底部四键 TAB 的「通知」（四页共用同一套 TAB）
-# 数据：MQTT home/ha-monitor-display/notify
+# 数据：MQTT home/pocket-homeassistant/notify
 #       → ns_notify 8 槽环形缓冲（include/notify_store.h，单条正文上限 3.5KB）
 # 版式（480x320）—— 卡片纵向节奏 5/30 · 4 · 187 · 4 · 32 · 4 · 49
 #   y5   h30  顶栏：MDI 响铃图标（黄 FFD54F，页面固定）+ 纯文字标题｜中间时钟 HH:MM

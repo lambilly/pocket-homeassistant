@@ -1159,12 +1159,12 @@ debug:
 #       → 各 template 传感器(1s 刷新) → 页面 lambda 读取
 #
 # 注意：结构体字段名与 JSON key 必须一一对应，
-#       改字段时同步改 ha/monitor_display_push.yaml
+#       改字段时同步改 ha/pocket_display_push.yaml
 # ==========================================================
 # 平铺 globals：每个 HA 字段一个独立全局变量
 # ----------------------------------------------------------
 # 约定：id 命名 = ha_ + JSON 字段名，一一对应，
-#      改字段时同步改 ha/monitor_display_push.yaml。
+#      改字段时同步改 ha/pocket_display_push.yaml。
 globals:
   - id: hd_ts
     type: uint32_t
