@@ -41,7 +41,7 @@
 | 触摸 | SDA / SCL | 38 / 39 | 与 ES8311、I2C 扩展口共用总线（400 kHz） |
 | 触摸 | RST / INT | 48 / 47 | |
 | 音频 | MCLK / BCLK / LRCK | 17 / 18 / 21 | I2S 总线 |
-| 音频 | DOUT / DIN | 15 / 16 | 出声 / 麦克风（DIN 待启用） |
+| 音频 | DOUT / DIN | 15 / 16 | 出声 / 麦克风采集 |
 | 音频 | PA_EN | 1 | 功放使能，**低电平开** |
 | 电池 | ADC | 8 | R14/R15 100K 分压，读数 ×2 还原 |
 | RGB 灯 | DATA | 40 | WS2812（GRB） |
@@ -206,7 +206,10 @@ CHANGELOG.md                 更新日志（旧项目线的版本记录）
 
 **麦克风 / 语音助手**
 
-- 麦克风与喇叭共用同一条 `i2s_audio` 总线（S3 全双工），三处采样率必须一致（16 kHz）；`mic_gain` 只有 0/6/12/18/24/30/36/42 八档，板载 MEMS 麦从 24DB 起。
+- 麦克风与喇叭共用同一条 `i2s_audio` 总线，三处采样率必须一致（16 kHz）；`mic_gain` 只有 0/6/12/18/24/30/36/42 八档，板载 MEMS 麦从 24DB 起。
+- **`use_microphone` 必须为 `false`**：它不是"启停麦克风"，而是 REG14 bit6 的 DMIC（PDM 数字麦）选择位。板载麦是 LMA2718B381-OA7 模拟麦，置 true 会切到 PDM 通路，ADC 全 0 → RMS 恒定 **-96.3 dBFS**。
+- **I2S 总线是独占的**：`i2s_audio` 用一把互斥锁，喇叭 `try_lock()` 抢不到就每秒重试（日志 `Parent bus is busy`），麦克风采集期间一直持锁 → 两者不能同时用。配置里用 `switch.mic_monitor` 显式启停采集（默认 OFF，音乐优先），并在播放/语音助手回复前后自动让路；`sound_level` 用 `passive: true` 避免常开麦。
+- `media_player.on_play` 只在音频真正开始播放时才触发，总线被占时永远等不到——所以用 `tts.speak` 主动播报前要先关 `switch.mic_monitor`。
 - ESPHome 已移除 ADF 的 AEC，**播报会被自己的麦收进去**：音量压到 60% 以下，或播报期间暂停采集。
 - `voice_assistant` 的 `microphone` 与 `speaker`/`media_player` 输出互斥（只能选一个输出）；STT 与 TTS 在 HA 侧 pipeline 里配，设备侧只负责采集与播放。
 - 没有唤醒词时用 HA 的 `assist_satellite.start_conversation` 触发对话。

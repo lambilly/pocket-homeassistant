@@ -535,13 +535,32 @@ media_player:
       num_channels: 1
     volume_initial: 0.6
     task_stack_in_psram: true       # 解码任务栈放 PSRAM，给 LVGL 腾内部 RAM
+    # ⚠ I2S 总线是独占的：麦克风采集中，喇叭 try_lock 会失败并每秒重试
+    #   （日志 "Parent bus is busy"）。所以播放一开始就主动放开麦克风。
     on_play:
       - switch.turn_on: pa_en       # 先开功放再出声
+      - if:
+          condition:
+            lambda: 'return id(mic_in).is_running();'
+          then:
+            - microphone.stop_capture: mic_in
     on_announcement:
       - switch.turn_on: pa_en
+      - if:
+          condition:
+            lambda: 'return id(mic_in).is_running();'
+          then:
+            - microphone.stop_capture: mic_in
     on_idle:
       - delay: 150ms                # 等尾音放完再关，避免"咔"声
       - switch.turn_off: pa_en
+      # 播放结束后，如果「Mic Monitor」开关还开着，自动恢复采集
+      - delay: 400ms
+      - if:
+          condition:
+            - switch.is_on: mic_monitor
+          then:
+            - microphone.capture: mic_in
 
 # ==========================================================
 # 麦克风：ES8311 ADC → I2S DIN(IO16) → ESP32
@@ -586,6 +605,21 @@ voice_assistant:
     - logger.log:
         format: "VA: stt_end -> %s"
         args: ["x.c_str()"]
+  # 回复音频要播之前先放开麦克风，否则喇叭抢不到 I2S 总线（回复会没声音）
+  on_tts_start:
+    - if:
+        condition:
+          lambda: 'return id(mic_in).is_running();'
+        then:
+          - microphone.stop_capture: mic_in
+  # 一轮对话结束，如果监测开关还开着就恢复采集
+  on_end:
+    - if:
+        condition:
+          - switch.is_on: mic_monitor
+        then:
+          - delay: 400ms
+          - microphone.capture: mic_in
   on_error:
     - logger.log:
         format: "VA: error code=%s msg=%s"
@@ -1212,7 +1246,11 @@ sensor:
     id: mic_level
     microphone:
       microphone: mic_in
-    passive: false
+    # passive: true = 不自己启停麦克风，只被动接收「有人在采」的数据
+    #   I2S 总线是独占资源（喇叭 try_lock 抢不到就每秒重试），若这里设 false
+    #   麦克风会常开并一直占线 → 喇叭永远放不出声（日志 "Parent bus is busy"）。
+    #   采集由 switch.mic_monitor 或 voice_assistant 按需启停。
+    passive: true
     measurement_duration: 1000ms
     rms:
       id: mic_rms
@@ -1704,6 +1742,22 @@ switch:
       number: GPIO1
       inverted: true
     restore_mode: ALWAYS_OFF         # 上电默认关功放（无底噪）
+
+  # 麦克风采集开关（噪声监测用）
+  #   ⚠ 与喇叭互斥：ESP32 只有一条 I2S 总线，麦克风采集时会独占锁，
+  #     喇叭取不到锁就每秒重试（Parent bus is busy）→ 放不出声。
+  #   默认 OFF（音乐优先）。打开后 sound_level 每 1 秒出一次 RMS；
+  #   播放开始/结束、语音助手回复前后会自动让路与恢复。
+  - platform: template
+    id: mic_monitor
+    name: "Mic Monitor"
+    icon: mdi:microphone
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - microphone.capture: mic_in
+    turn_off_action:
+      - microphone.stop_capture: mic_in
 
   # 自动休眠总开关（关掉后常亮，适合调试/演示）
   - platform: template
