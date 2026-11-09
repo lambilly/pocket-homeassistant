@@ -26,8 +26,11 @@
   导致黑屏，串口埋点证实无关（真因是上一条的 `restore_mode`）。回归官方组件，减少仓库体积
 - 文档：README 状态灯表补色值列与配色理由；音频章节改为单管线；目录结构与文档索引同步
 - **设备标识彻底切割旧项目**：MQTT 远程控制包与通知桥接包的 `device.identifiers`
-  由 `ha_monitor_display_remote` 改为 `pkha_remote`。改名后 HA 会新生成一条「PKHA Remote」
-  设备记录，旧记录变成无实体的残留，手动删一次即可；`unique_id` 未变，实体 ID 与历史数据不受影响
+  由 `ha_monitor_display_remote` 改为 `pkha_remote`，设备名由「PKHA Remote」改为
+  **「Pocket HA Remote」**；同机的旧项目设备则是「HA Monitor Remote」，两台不再合并。
+  改名后 HA 会新生成一条「Pocket HA Remote」设备记录，旧记录变成无实体的残留，手动删一次即可
+- **entity_id 固定**：6 个 MQTT 实体全部补 `object_id`（`pkha_remote_brightness` 等），
+  entity_id 不再随设备显示名变化，卡片与自动化长期稳定
 
 ## [v3.3] — 2026-11-08（状态灯：WS2812 一灯多态）
 
