@@ -2,6 +2,8 @@
 
 口袋式 Home Assistant 信息屏。硬件为 **LCDWIKI ES3C35P**（ESP32-S3 N16R8 + 3.5" 320×480 QSPI 触摸屏，板载喇叭/麦克风/TF 卡/电池座），软件是 **ESPHome + LVGL**：四页数据看板、触摸 TAB 导航、熄屏省电、HA 语音播报与语音助手。
 
+<p align="center"><img src="images/finished.jpg" width="720" alt="成品：3D 打印外壳，运行家居页"></p>
+
 ## 功能一览
 
 - **四页 + 底部四键 TAB 导航**（家居 → 网络 → 系统 → 通知）
@@ -28,6 +30,8 @@
 | 存储 | MicroSD（SDIO 4 位，未启用）+ 16 MB Flash |
 | 电源 | 3.7 V 锂电池座（TP4054 充电，最大 500 mA），Type-C 直连 S3 |
 | 其他 | WS2812 RGB 指示灯、BOOT 键、1.25 mm 4P 扩展口 ×3（I2C / UART / IO） |
+
+<img src="images/esp32-s3-hardware.jpg" width="360" alt="ES3C35P 开发板"> 实机与调试过程照片见 [`images/`](images/)。
 
 ### 引脚分配
 
@@ -173,6 +177,7 @@ include/                     notify_store.h 通知环形缓冲/折行/清洗 + n
 fonts/                       NotoSansSC-SemiBold.ttf（UI 实际引用）+ materialdesignicons-webfont.ttf（图标）
                              NotoSansSC-Regular.ttf 为备用字重，当前配置未引用
 sounds/                      alarm / ding / notify 三个 wav（本地音效素材，当前播报走 HA 推流）
+images/                      实机照片与调试图（成品 / 开发板 / 屏幕与触摸调试）
 ha/                          HA 侧资源（→ /config/packages/ 部署）
   pocket_display_push.yaml         数据推送自动化（pkha_display_push）
   pocket_display_control.yaml      远程控制 5 实体
