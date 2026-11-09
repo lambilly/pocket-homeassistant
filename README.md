@@ -26,12 +26,18 @@
 | 屏幕 | 3.5" IPS，320×480 原生竖屏，RGB565，300 cd/m² / 120 mA 背光 |
 | 显示驱动 | **ST77922，QSPI 四线**（无 DC 脚），`mipi_spi` + `model: CUSTOM` |
 | 触摸 | ST77922 内置触摸，I2C **0x55**，5 点（自写组件 `components/st77922_touch`） |
-| 音频 | ES8311 codec（I2C 0x18）+ FM8002E 功放（PA 使能 IO1，低有效）+ MEMS 麦克风 |
+| 音频 | ES8311 codec（I2C 0x18）+ FM8002E 功放（PA 使能 IO1，低有效）+ MEMS 麦克风；实配喇叭 3525 腔体 **4Ω 3W**（2.0 2P 插头，见下方图） |
 | 存储 | MicroSD（SDIO 4 位，未启用）+ 16 MB Flash |
-| 电源 | 3.7 V 锂电池座（TP4054 充电，最大 500 mA），Type-C 直连 S3 |
+| 电源 | 3.7 V 锂电池座（TP4054 充电，最大 500 mA），Type-C 直连 S3；实配电池 2000 mAh 软包（MX1.25 插头，50×34×10 mm，见下方图） |
 | 其他 | WS2812 RGB 指示灯、BOOT 键、1.25 mm 4P 扩展口 ×3（I2C / UART / IO） |
 
-<img src="images/esp32-s3-hardware.jpg" width="360" alt="ES3C35P 开发板"> 实机与调试过程照片见 [`images/`](images/)。
+<p>
+  <img src="images/esp32-s3-hardware.jpg" width="300" alt="ES3C35P 开发板">
+  <img src="images/battery-mx125-2000mah.jpg" width="200" alt="实配电池 3.7V 2000mAh MX1.25">
+  <img src="images/speaker-3525-4ohm-3w.jpg" width="200" alt="实配喇叭 3525 腔体 4Ω 3W">
+</p>
+
+其余实机与调试过程照片见 [`images/`](images/)。
 
 ### 引脚分配
 
