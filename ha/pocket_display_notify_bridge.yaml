@@ -21,7 +21,6 @@ mqtt:
   sensor:
     - name: "PKHA Last Notify"
       unique_id: pkha_last_notify
-      object_id: pkha_last_notify
       icon: mdi:bell-ring-outline
       state_topic: "home/pocket-homeassistant/notify"
       value_template: >-
