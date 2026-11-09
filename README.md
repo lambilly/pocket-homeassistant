@@ -186,6 +186,7 @@ ha/                          HA 侧资源（→ /config/packages/ 部署）
   lovelace_pocket_control_card.yaml 屏幕控制卡片（Lovelace）
   NR子流程-屏幕推送-pocket.json     Node-RED 推送子流程
 docs/                        硬件档案 / 触摸协议 / 音频方案 / 外设路线图
+tools/pocket-display-generator.html  浏览器版配置生成器：填 WiFi/MQTT → 拉 HA 实体 → 生成 secrets.yaml 与推送包（含 480×320 屏幕版面模拟，放到 /config/www/ 经 /local/ 打开）
 reference/datasheet/         ES3C35P 规格书、原理图、IO 表、官方 quickstart
 test/display_test.yaml       早期点屏版本（字体路径按 test/ 目录写、未含 rotation/transform，仅作历史参考）
 CHANGELOG.md                 更新日志

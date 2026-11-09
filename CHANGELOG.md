@@ -29,8 +29,12 @@
   由 `ha_monitor_display_remote` 改为 `pkha_remote`，设备名由「PKHA Remote」改为
   **「Pocket HA Remote」**；同机的旧项目设备则是「HA Monitor Remote」，两台不再合并。
   改名后 HA 会新生成一条「Pocket HA Remote」设备记录，旧记录变成无实体的残留，手动删一次即可
-- **entity_id 固定**：6 个 MQTT 实体全部补 `object_id`（`pkha_remote_brightness` 等），
-  entity_id 不再随设备显示名变化，卡片与自动化长期稳定
+- **entity_id 与设备名解耦说明**：MQTT YAML 手动配置不支持 `object_id`（discovery 专用
+  字段，写了会报 invalid config，已回退）；entity_id 由设备名+实体名生成，全新安装为
+  `number.pocket_ha_remote_brightness` 这类；本机已注册实体保留旧 id，卡片无需改动
+- **新增 `tools/pocket-display-generator.html` 配置生成器**（自旧项目移植，去 HA 化改名）：
+  浏览器填 WiFi/MQTT、可选拉取 HA 实体列表，生成 `secrets.yaml` 片段与
+  `pocket_display_push.yaml`（51 槽位），右侧 480×320 屏幕版面实时模拟与槽位联动
 
 ## [v3.3] — 2026-11-08（状态灯：WS2812 一灯多态）
 
