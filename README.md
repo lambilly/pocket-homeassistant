@@ -256,3 +256,12 @@ CHANGELOG.md                 更新日志
 - 扩展口传感器（I2C 温湿度 / 光照，UART 空气质量 / 毫米波）
 - 供电状态 100% 判定：需从 TP4054 CHRG 脚飞线到 IO45、USB 5V 分压到 IO46
 - 音乐与 TTS 同时出声：单管线不混音，TTS 会打断音乐；要叠加得重新引入混音且避开 mixer 的采样率锁死问题
+
+## 参考 / 收藏
+
+- [andrisgauracs/whistle-esp32](https://github.com/andrisgauracs/whistle-esp32)（Apache-2.0）—
+  Whistle 语音转写模型在 ESP32-S3 上的独立 C99 实现，完全离线、7 语言自由转写（裁剪后模型 14.5MB）。
+  **不与本固件集成**：独立 ESP-IDF 工程无法与 ESPHome 共存，转写延迟 ~6s、int8 准确率约 80%。
+  收藏价值：证明了 S3 N16R8 可跑端侧 int8 语音推理——若将来做「出门无 HA 的离线命令词」模式，回头参考
+  它的模型裁剪（`tools/whistle_strip.py`）与推理实现
+
