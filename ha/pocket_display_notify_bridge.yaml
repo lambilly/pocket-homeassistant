@@ -23,9 +23,13 @@ mqtt:
       unique_id: pkha_last_notify
       icon: mdi:bell-ring-outline
       state_topic: "home/pocket-homeassistant/notify"
+      # MQTT 传感器状态上限 255 字符，超长会刷 "Invalid state message"。
+      # 通知正文带 LVGL 配色标记（#RRGGBB）且可能上千字，这里先剥掉配色标记、
+      # 再截断到 250 字符；完整原文保留在属性 payload 里（属性无长度限制）。
       value_template: >-
-        {{ value_json.message if value_json is defined and value_json.message is defined
-           else value }}
+        {%- set m = value_json.message if value_json is defined and value_json.message is defined else value -%}
+        {%- set t = m | regex_replace('#[0-9A-Fa-f]{6} ?', '') | regex_replace('#', '') -%}
+        {{ t[:250] }}{{ '…' if t | length > 250 else '' }}
       json_attributes_topic: "home/pocket-homeassistant/notify"
       json_attributes_template: >-
         {{ {'title': value_json.title | default(''),
