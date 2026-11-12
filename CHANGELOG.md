@@ -2,6 +2,20 @@
 
 > **版本线说明**：本仓库自 **v3.0** 起按 ES3C35P 硬件平台独立记账，早期 SPI 屏版本不在本仓库范围内。
 
+## [v3.5] — 2026-11-12（设备计数总数改为实体驱动）
+
+- **家居页「电器动态」的总数不再硬编码**。原来 `set_cnt()` 里写死 `36盏 / 6幅 / 4台 / 20台`，
+  现在四个总数由 HA 下发的实体属性解析得出：
+  `light_all_count`(34) / `curtain_all_count`(6) / `climate_all_count`(4) / `equipment_all_count`(20)。
+  实测**只有电灯是错的（36 → 34，全屋灯光组 34 个成员）**，其余三个原本就与实体一致
+- 数据链路：`ha/pocket_display_push.yaml` payload 新增 `light_all / curtain_all / climate_all /
+  equipment_all`（取 `state_attr(SLOT.xxx, '<name>_all_count')`）→ 固件新增 4 个 `hd_*_all` global
+  与对应 `ha_*_all` 模板传感器 → UI `set_cnt(lbl, sensor, name, total, total_fb, unit)`，
+  总数未到时退回 `34/6/4/20` 兜底
+- 顺带修显示：开启数未知时由原来的 `电灯: --` 改为 `电灯: --/34盏`，总数始终可见
+- 四个统计传感器（`sensor.*_on_count`）由 Node-RED 维护，属性里带 `*_all_count / *_all_list`，
+  以后增减设备只改 NR，屏幕自动跟着变，不用再改固件
+
 ## [v3.4] — 2026-11-08（音频单管线 · 语音入口 · 灯语重做）
 
 - **修复「播过 TTS 就放不了音乐，反之亦然」**：拆掉 `speaker: platform: mixer` 双管线，改**单管线**

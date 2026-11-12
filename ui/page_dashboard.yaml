@@ -797,18 +797,22 @@ interval:
           set_dist(id(home_xuanyi_dist_label), id(ha_xuanyi_dist), 0xFFD54F);
           set_dist(id(home_byd_dist_label),    id(ha_byd_dist),    0xFF80AB);
 
-          // ===== 行4/行5 左列：设备计数（格式：电灯: 2/36盏）=====
-          auto set_cnt = [](lv_obj_t* lbl, esphome::sensor::Sensor* s, const char* name, const char* total) {
+          // ===== 行4/行5 左列：设备计数（格式：电灯: 2/34盏）=====
+          // 总数由 HA 下发（*_all_count 属性 → payload *_all），total_fb 只在
+          // 总数还没收到时兜底，正常情况下不参与显示。
+          auto set_cnt = [](lv_obj_t* lbl, esphome::sensor::Sensor* s, const char* name,
+                            esphome::sensor::Sensor* total, int total_fb, const char* unit) {
             char b[40];
-            if (std::isfinite(s->state)) snprintf(b, sizeof(b), "%s: %d/%s", name, (int)s->state, total);
-            else snprintf(b, sizeof(b), "%s: #757575 --#", name);
+            int t = (total != nullptr && std::isfinite(total->state)) ? (int)total->state : total_fb;
+            if (std::isfinite(s->state)) snprintf(b, sizeof(b), "%s: %d/%d%s", name, (int)s->state, t, unit);
+            else snprintf(b, sizeof(b), "%s: #757575 --#/%d%s", name, t, unit);
             lv_label_set_text(lbl, b);
             lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);   // 名称恒白，仅 -- 内联灰
           };
-          set_cnt(id(home_light_label),     id(ha_light_on),       "电灯", "36盏");
-          set_cnt(id(home_curtain_label),   id(ha_curtain_closed), "窗帘", "6幅");
-          set_cnt(id(home_climate_label),   id(ha_climate_on),     "空调", "4台");
-          set_cnt(id(home_equipment_label), id(ha_equipment_on),   "电器", "20台");
+          set_cnt(id(home_light_label),     id(ha_light_on),       "电灯", id(ha_light_all),     34, "盏");
+          set_cnt(id(home_curtain_label),   id(ha_curtain_closed), "窗帘", id(ha_curtain_all),    6, "幅");
+          set_cnt(id(home_climate_label),   id(ha_climate_on),     "空调", id(ha_climate_all),    4, "台");
+          set_cnt(id(home_equipment_label), id(ha_equipment_on),   "电器", id(ha_equipment_all), 20, "台");
 
           // ===== 中列：今日能耗（电压 / 水压 / 用气 / 用电）=====
           // 名称恒白；数值未就绪时仅 "--" 内联灰，有数据白色；单位随实体走

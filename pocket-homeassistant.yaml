@@ -158,6 +158,14 @@ mqtt:
           else id(hd_climate_on) = NAN;
           if (x["equipment_on"].is<float>()) id(hd_equipment_on) = x["equipment_on"].as<float>();
           else id(hd_equipment_on) = NAN;
+          if (x["light_all"].is<float>()) id(hd_light_all) = x["light_all"].as<float>();
+          else id(hd_light_all) = NAN;
+          if (x["curtain_all"].is<float>()) id(hd_curtain_all) = x["curtain_all"].as<float>();
+          else id(hd_curtain_all) = NAN;
+          if (x["climate_all"].is<float>()) id(hd_climate_all) = x["climate_all"].as<float>();
+          else id(hd_climate_all) = NAN;
+          if (x["equipment_all"].is<float>()) id(hd_equipment_all) = x["equipment_all"].as<float>();
+          else id(hd_equipment_all) = NAN;
           if (x["weather_temp"].is<float>()) id(hd_weather_temp) = x["weather_temp"].as<float>();
           else id(hd_weather_temp) = NAN;
           if (x["outdoor_temp"].is<float>()) id(hd_outdoor_temp) = x["outdoor_temp"].as<float>();
@@ -1220,6 +1228,22 @@ globals:
     type: float
     restore_value: false
     initial_value: 'NAN'
+  - id: hd_light_all
+    type: float
+    restore_value: false
+    initial_value: 'NAN'
+  - id: hd_curtain_all
+    type: float
+    restore_value: false
+    initial_value: 'NAN'
+  - id: hd_climate_all
+    type: float
+    restore_value: false
+    initial_value: 'NAN'
+  - id: hd_equipment_all
+    type: float
+    restore_value: false
+    initial_value: 'NAN'
   - id: hd_weather_temp
     type: float
     restore_value: false
@@ -1642,6 +1666,38 @@ sensor:
     lambda: |-
       if (id(ha_data_last_ms) == 0) return {};
       return id(hd_equipment_on);
+  # light_all（全屋灯光组总数，HA 侧属性下发）
+  - platform: template
+    id: ha_light_all
+    internal: true
+    update_interval: 1s
+    lambda: |-
+      if (id(ha_data_last_ms) == 0) return {};
+      return id(hd_light_all);
+  # curtain_all
+  - platform: template
+    id: ha_curtain_all
+    internal: true
+    update_interval: 1s
+    lambda: |-
+      if (id(ha_data_last_ms) == 0) return {};
+      return id(hd_curtain_all);
+  # climate_all
+  - platform: template
+    id: ha_climate_all
+    internal: true
+    update_interval: 1s
+    lambda: |-
+      if (id(ha_data_last_ms) == 0) return {};
+      return id(hd_climate_all);
+  # equipment_all
+  - platform: template
+    id: ha_equipment_all
+    internal: true
+    update_interval: 1s
+    lambda: |-
+      if (id(ha_data_last_ms) == 0) return {};
+      return id(hd_equipment_all);
   # weather_temp
   - platform: template
     id: ha_weather_temperature

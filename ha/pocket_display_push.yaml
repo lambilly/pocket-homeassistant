@@ -63,10 +63,10 @@ automation:
         gateway_count:  sensor.gateway_online_count                    # 网关在线
         ap_count:       sensor.ap_online_count                         # AP 在线
         monitor_count:  sensor.device_monitor_count                    # 监控设备数
-        light_on:       sensor.light_on_count                          # 灯开启数
-        curtain_closed: sensor.curtain_closed_count                    # 窗帘关闭数
-        climate_on:     sensor.climate_on_count                        # 空调开启数
-        equipment_on:   sensor.equipment_on_count                      # 电器开启数
+        light_on:       sensor.light_on_count                          # 灯开启数（属性 light_all_count = 全屋灯光组总数）
+        curtain_closed: sensor.curtain_closed_count                    # 窗帘关闭数（属性 curtain_all_count）
+        climate_on:     sensor.climate_on_count                        # 空调开启数（属性 climate_all_count）
+        equipment_on:   sensor.equipment_on_count                      # 电器开启数（属性 equipment_all_count）
         asr_count:      sensor.asr_online_count                        # ASR 在线
         router_count:   sensor.router_online_count                     # 路由器在线
         device_ctrl:    sensor.device_control_count                    # 设备控制数
@@ -178,6 +178,11 @@ automation:
                 "curtain_closed":   states(SLOT.curtain_closed | default('')) | float(none),
                 "climate_on":       states(SLOT.climate_on | default('')) | float(none),
                 "equipment_on":     states(SLOT.equipment_on | default('')) | float(none),
+
+                "light_all":        state_attr(SLOT.light_on | default(''), 'light_all_count') | float(none),
+                "curtain_all":      state_attr(SLOT.curtain_closed | default(''), 'curtain_all_count') | float(none),
+                "climate_all":      state_attr(SLOT.climate_on | default(''), 'climate_all_count') | float(none),
+                "equipment_all":    state_attr(SLOT.equipment_on | default(''), 'equipment_all_count') | float(none),
 
                 "weather_temp":     state_attr(SLOT.weather | default(''), 'temperature') | float(none),
                 "outdoor_temp":     states(SLOT.outdoor_temp | default('')) | float(none),
