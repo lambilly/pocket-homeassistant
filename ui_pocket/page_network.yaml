@@ -604,7 +604,7 @@ lvgl:
                   text_font: ui_font_small
                   text_color: 0x757575
 
-        # ============ 底部四键 TAB（四页共用，见 ui/tab_bar.yaml） ============
+        # ============ 底部四键 TAB（四页共用，见 ui_pocket/tab_bar.yaml） ============
         - !include tab_bar.yaml
 
 # ==========================================================

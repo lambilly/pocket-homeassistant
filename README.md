@@ -113,7 +113,7 @@ web_password: your-web-password
 /config/esphome/
 ├── pocket-homeassistant.yaml      主配置
 ├── components/st77922_touch/      自定义触摸组件（external_components 引用）
-├── ui/                            页面与公共资源（6 个文件）
+├── ui_pocket/                     页面与公共资源（6 个文件，本项目独占）
 ├── include/                       notify_store.h / notify_charset.h
 ├── fonts/                         NotoSansSC-SemiBold.ttf + materialdesignicons-webfont.ttf
 └── secrets.yaml
@@ -171,7 +171,7 @@ ESP32 mqtt.on_json_message ─▶ hd_* globals ─▶ template 传感器（1 s�
 ```
 pocket-homeassistant.yaml    主配置：板型 / 网络 / MQTT / 屏 / 触摸 / 音频 / 电源 / LVGL 全局
 pocket-ha-screen-test.yaml   点屏测试固件（可直接放 /config/esphome 编译，只验证显示/方向/颜色/背光）
-ui/                          页面与公共资源
+ui_pocket/                   页面与公共资源（不与旧屏 ui/ 共用）
   ui_common.yaml               字体（中文本白名单 + MDI 图标）/ 全局变量 / 时钟 / TAB 高亮
   page_dashboard.yaml          页面1 家居（6 行栅格）
   page_network.yaml            页面2 网络（4 行栅格）

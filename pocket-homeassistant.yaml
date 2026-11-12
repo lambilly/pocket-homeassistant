@@ -1,5 +1,5 @@
 # ==========================================================
-# Pocket HomeAssistant v3.4（口袋版 HA 信息屏）
+# Pocket HomeAssistant v3.6（口袋版 HA 信息屏）
 #   硬件：LCDWIKI ES3C35P（ESP32-S3 N16R8 + 3.5" 320×480 IPS）
 #     · 显示：ST77922 QSPI，mipi_spi CUSTOM，初始化序列取自官方 wiki + ESPHome dev 分支，
 #       序列开头双软复位 + 120ms（屏 RESET 硬线接 EN，OTA 软重启无硬复位）
@@ -14,11 +14,12 @@
 #   HA 侧配套自动化：ha/pocket_display_*.yaml
 # ==========================================================
 # 主配置：设备 / 网络 / 硬件 / HA 实体
-# 页面布局拆分到 ui/ 目录，改界面只需改对应文件：
-#   ui/ui_common.yaml     公共资源（字体、全局变量、时钟刷新）
-#   ui/page_dashboard.yaml       页面1 家居
-#   ui/page_network.yaml         页面2 网络
-#   ui/page_system.yaml          页面3 系统
+# 页面布局拆分到 ui_pocket/ 目录（本项目独占，不与 HA Monitor Display 的 ui/ 共用），
+# 改界面只需改对应文件：
+#   ui_pocket/ui_common.yaml     公共资源（字体、全局变量、时钟刷新）
+#   ui_pocket/page_dashboard.yaml       页面1 家居
+#   ui_pocket/page_network.yaml         页面2 网络
+#   ui_pocket/page_system.yaml          页面3 系统
 #
 # 接入方式（方案C，双通道并存）：
 #   api  : 本地局域网走 ESPHome Native API（连 Home Assistant，低延迟）
@@ -27,11 +28,11 @@
 
 packages:
   # 页面顺序 = LVGL 页面列表顺序，第一个为开机默认页（家居）
-  page_dashboard: !include ui/page_dashboard.yaml
-  page_network: !include ui/page_network.yaml
-  page_system: !include ui/page_system.yaml
-  page_notify: !include ui/page_notify.yaml      # v2.0 NOTIFY：第四页，不参与开机默认
-  ui_common: !include ui/ui_common.yaml
+  page_dashboard: !include ui_pocket/page_dashboard.yaml
+  page_network: !include ui_pocket/page_network.yaml
+  page_system: !include ui_pocket/page_system.yaml
+  page_notify: !include ui_pocket/page_notify.yaml      # v2.0 NOTIFY：第四页，不参与开机默认
+  ui_common: !include ui_pocket/ui_common.yaml
 esphome:
   name: pocket-homeassistant
   friendly_name: Pocket HomeAssistant
@@ -39,7 +40,7 @@ esphome:
   includes:
     - include/notify_store.h
     - include/notify_charset.h      # notify_store.h 里 #include "notify_charset.h"，
-                               # 必须一并登记，否则构建目录 src/ui/ 下没有这个文件
+                               # 必须一并登记，否则构建目录 src/ui_pocket/ 下没有这个文件
 
   # v2.1 远程控制通道：开机等 WiFi/MQTT 连上后回发一次状态帧，
   #   让 HA 里 5 个 mqtt 实体一上线就有值，不必等下一次操作。

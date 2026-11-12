@@ -2,6 +2,17 @@
 
 > **版本线说明**：本仓库自 **v3.0** 起按 ES3C35P 硬件平台独立记账，早期 SPI 屏版本不在本仓库范围内。
 
+## [v3.6] — 2026-11-12（UI 目录改名 `ui_pocket/`）
+
+- **UI 目录 `ui/` → `ui_pocket/`**，与 HA Monitor Display 彻底分开。起因：两台设备装在同一台
+  HA 上时，旧屏的 `ui/` 与本项目的 `ui/` 同名，构建时互相覆盖（pocket 的电池页盖掉墙屏版，
+  报缺 ID）。现在本项目独占 `ui_pocket/`，旧屏用 `ui_ha_monitor/`，各改各的不会串味
+- 同步更新：`packages:` 里 5 处 `!include`、文件头注释、`ui_common.yaml` 与四个页面里
+  `见 ui/tab_bar.yaml` 的指引注释、README 目录树、`tools/pocket-display-generator.html`
+  顶部的坐标来源注释
+- 只改路径不改内容，界面与行为零变化；从旧版升级需把 `ui/` 整个目录改名，**不要只改 include**，
+  否则 `tab_bar.yaml` 等文件还在旧目录里
+
 ## [v3.5] — 2026-11-12（设备计数总数改为实体驱动）
 
 - **家居页「电器动态」的总数不再硬编码**。原来 `set_cnt()` 里写死 `36盏 / 6幅 / 4台 / 20台`，
